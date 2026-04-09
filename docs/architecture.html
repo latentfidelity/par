@@ -386,9 +386,7 @@
 
 <div class="view-container">
   <div class="stats-bar" id="stats-bar"></div>
-  <div id="graph-container" style="position:relative">
-    <button class="neu-btn" id="resetGraphBtn" style="position:absolute;top:16px;right:16px;z-index:10;padding:8px 16px;border-radius:10px;background:#e0e5ec;box-shadow:4px 4px 8px #a3b1c6,-4px -4px 8px #ffffff;font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-muted);display:none" onclick="resetGraph()">⟳ Reset</button>
-  </div>
+  <div id="graph-container" style="position:relative"></div>
   <div class="tooltip" id="tooltip"></div>
   <div class="legend" id="legend"></div>
   <div class="tool-table-container" id="tool-table-view"></div>
@@ -551,25 +549,20 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 function resetGraph() {
-  if (currentSimulation) {
-    currentSimulation.alpha(1).restart();
-  }
+  buildForceGraph();
 }
 
 function render() {
   const graphEl = document.getElementById('graph-container');
   const tableEl = document.getElementById('tool-table-view');
-  const resetBtn = document.getElementById('resetGraphBtn');
 
   if (currentView === 'data') {
     graphEl.style.display = 'block';
     tableEl.classList.remove('active');
-    resetBtn.style.display = 'block';
     buildForceGraph();
   } else if (currentView === 'table') {
     graphEl.style.display = 'none';
     tableEl.classList.add('active');
-    resetBtn.style.display = 'none';
     buildToolTable();
   }
 }
@@ -580,9 +573,7 @@ function render() {
 
 function buildForceGraph() {
   const container = document.getElementById('graph-container');
-  const resetBtn = document.getElementById('resetGraphBtn');
-  container.innerHTML = '';
-  container.appendChild(resetBtn);
+  container.innerHTML = '<button class="neu-btn" id="resetGraphBtn" style="position:absolute;top:16px;right:16px;z-index:10;padding:8px 16px;border-radius:10px;background:#e0e5ec;box-shadow:4px 4px 8px #a3b1c6,-4px -4px 8px #ffffff;font-family:\'JetBrains Mono\',monospace;font-size:0.75rem;color:#a0aec0;cursor:pointer;border:none" onclick="resetGraph()">⟳ Reset</button>';
 
   const width = container.clientWidth;
   const height = container.clientHeight;
