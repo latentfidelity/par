@@ -258,17 +258,22 @@ Current gaps:
 
 ## Roadmap
 
+### Shipped
+- [x] **Discord adapters** — agent fleet connects to team chat via bot framework
+- [x] **Dataset registry** — register, search, and manage training datasets (4 tools)
+- [x] **Experiment tracking** — log ML experiments with built-in experiment-runner skill
+- [x] **Snippet versioning** — store, search, and update reusable code/prompt templates (4 tools)
+
 ### Next
 - [ ] **Staleness detection** — flag memories that reference files changed since the memory was stored
-- [ ] **Prompt versioning** — store and version prompt templates linked to experiment results
-- [ ] **Discord/Slack adapters** — connect agent fleet to team chat
+- [ ] **Conflict detection** — surface contradictory memories before the agent acts on stale context
+- [ ] **Memory versioning** — track how decisions evolve across conversations
+- [ ] **Pluggable embeddings** — swap `all-MiniLM-L6-v2` for larger models when hardware allows
 
 ### Later
-- [ ] **Memory versioning** — track how decisions evolve across conversations
-- [ ] **Conflict detection** — surface contradictory memories before the agent acts on stale context
-- [ ] **Model registry** — catalog available models with capabilities, cost, and quality metadata
-- [ ] **Pluggable embeddings** — swap `all-MiniLM-L6-v2` for larger models when hardware allows
 - [ ] **Multi-node** — replicate state across machines for teams
+- [ ] **Persistent vector index** — avoid full index rebuild on restart for large memory stores
+- [ ] **Webhook integrations** — push event notifications to external services (Slack, HTTP endpoints)
 
 ### Non-goals
 - Cloud hosting — PAR is self-hosted by design
