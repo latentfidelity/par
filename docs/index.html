@@ -374,13 +374,13 @@
 </header>
 
 <div class="tab-bar">
-  <button class="tab active" data-view="data">
-    <span class="iconify" data-icon="lucide:database" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
-    Data Topology
-  </button>
-  <button class="tab" data-view="flow">
+  <button class="tab active" data-view="flow">
     <span class="iconify" data-icon="lucide:git-merge" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
     Data Flow
+  </button>
+  <button class="tab" data-view="data">
+    <span class="iconify" data-icon="lucide:database" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
+    Data Topology
   </button>
   <button class="tab" data-view="table">
     <span class="iconify" data-icon="lucide:list" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
@@ -544,7 +544,7 @@ Object.entries(CATEGORIES).forEach(([, cfg]) => {
 // TABS
 // ═══════════════════════
 
-let currentView = 'data';
+let currentView = 'flow';
 let currentSimulation = null;
 
 document.querySelectorAll('.tab').forEach(tab => {
