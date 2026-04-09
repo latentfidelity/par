@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAR — Persistent Agent Runtime</title>
+  <meta name="description" content="Interactive system visualizations for PAR, the self-hosted cognitive runtime for AI coding agents.">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #e0e5ec;
+      --shadow-dark: #a3b1c6;
+      --shadow-light: #ffffff;
+      --primary: #6366f1;
+      --text: #374151;
+      --muted: #6b7280;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .hero {
+      text-align: center;
+      margin-bottom: 3rem;
+    }
+
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 0.5rem;
+    }
+
+    .hero h1 .accent { color: var(--primary); }
+
+    .hero p {
+      color: var(--muted);
+      font-size: 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 400;
+    }
+
+    .hero .subtitle {
+      margin-top: 1rem;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      color: var(--muted);
+      max-width: 520px;
+      line-height: 1.6;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      max-width: 960px;
+      width: 100%;
+    }
+
+    .card {
+      background: var(--bg);
+      box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+      border-radius: 20px;
+      padding: 2rem;
+      text-decoration: none;
+      color: var(--text);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card:hover {
+      box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+      transform: translateY(-2px);
+    }
+
+    .card:active {
+      box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+      transform: translateY(0);
+    }
+
+    .card-icon {
+      font-size: 2rem;
+      margin-bottom: 1rem;
+      display: block;
+    }
+
+    .card h2 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--primary);
+    }
+
+    .card p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    .card .badge {
+      position: absolute;
+      top: 1.25rem;
+      right: 1.25rem;
+      background: var(--bg);
+      box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+      padding: 0.25rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      color: var(--primary);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+
+    .footer a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+<div class="hero">
+  <h1>🧠 <span class="accent">PAR</span></h1>
+  <p>Persistent Agent Runtime · v7.0</p>
+  <div class="subtitle">
+    Self-hosted cognitive runtime for AI coding agents — memory, knowledge, coordination, and self-maintenance across any provider.
+  </div>
+</div>
+
+<div class="cards">
+  <a class="card" href="architecture.html">
+    <span class="badge">D3.js</span>
+    <span class="card-icon">🏗️</span>
+    <h2>System Architecture</h2>
+    <p>Interactive data topology of all 55 MCP tools and their storage directories. Explore the tool registry powering the runtime.</p>
+  </a>
+
+  <a class="card" href="data-flow.html">
+    <span class="badge">Animated</span>
+    <span class="card-icon">🔀</span>
+    <h2>Data Flow</h2>
+    <p>Animated flow chart showing how data moves through PAR — from MCP request to storage, embedding, knowledge extraction, and response.</p>
+  </a>
+
+  <a class="card" href="dashboard.html">
+    <span class="badge">Stats</span>
+    <span class="card-icon">📊</span>
+    <h2>System Dashboard</h2>
+    <p>Real-time runtime overview — memory counts, project registry, agent fleet status, event history, and storage health.</p>
+  </a>
+</div>
+
+<div class="footer">
+  <a href="https://github.com/latentfidelity/par">GitHub</a> · 55 tools · MIT License · Zero cloud dependency
+</div>
+
+</body>
+</html>

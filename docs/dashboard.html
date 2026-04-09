@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAR — System Dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --card: #1a1d27;
+      --card-border: #2a2d3a;
+      --text: #e2e8f0;
+      --text-dim: #64748b;
+      --accent: #6366f1;
+      --green: #22c55e;
+      --yellow: #f59e0b;
+      --red: #ef4444;
+      --cyan: #06b6d4;
+      --pink: #ec4899;
+      --purple: #a855f7;
+      --radius: 12px;
+      --glow: 0 0 20px rgba(99, 102, 241, 0.15);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 24px;
+    }
+
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+    header h1 .accent { color: var(--accent); }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    .status-pill.online { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-pill.offline { background: rgba(239,68,68,0.15); color: var(--red); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status-pill.online .status-dot { background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+    .status-pill.offline .status-dot { background: var(--red); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: all 0.2s;
+    }
+    .card:hover {
+      border-color: var(--accent);
+      box-shadow: var(--glow);
+    }
+    .card-title {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-size: 2rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .card-sub {
+      font-size: 0.78rem;
+      color: var(--text-dim);
+      margin-top: 4px;
+    }
+
+    .card-value.green { color: var(--green); }
+    .card-value.cyan { color: var(--cyan); }
+    .card-value.purple { color: var(--purple); }
+    .card-value.yellow { color: var(--yellow); }
+    .card-value.pink { color: var(--pink); }
+    .card-value.accent { color: var(--accent); }
+
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin: 24px 0 12px;
+      padding-left: 4px;
+    }
+
+    .table-card {
+      background: var(--card);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th {
+      text-align: left;
+      padding: 10px 16px;
+      background: rgba(99,102,241,0.05);
+      color: var(--text-dim);
+      font-weight: 500;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    td {
+      padding: 10px 16px;
+      border-top: 1px solid var(--card-border);
+    }
+
+    .bar-chart {
+      display: flex;
+      gap: 4px;
+      align-items: end;
+      height: 60px;
+      margin-top: 12px;
+    }
+    .bar {
+      flex: 1;
+      background: var(--accent);
+      border-radius: 3px 3px 0 0;
+      min-height: 2px;
+      position: relative;
+      transition: height 0.5s ease;
+    }
+    .bar:hover { filter: brightness(1.3); }
+    .bar-label {
+      position: absolute;
+      bottom: -18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      white-space: nowrap;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 500;
+    }
+    .badge.active { background: rgba(34,197,94,0.15); color: var(--green); }
+    .badge.idle { background: rgba(245,158,11,0.15); color: var(--yellow); }
+
+    .refresh-btn {
+      background: none;
+      border: 1px solid var(--card-border);
+      color: var(--text-dim);
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    .footer {
+      text-align: center;
+      padding: 16px;
+      font-size: 0.72rem;
+      color: var(--text-dim);
+    }
+    .footer code { font-family: 'JetBrains Mono', monospace; background: var(--card); padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 <span class="accent">Dashboard</span></h1>
+  <div style="display:flex;gap:12px;align-items:center">
+    <span class="status-pill" id="statusPill"><span class="status-dot"></span><span id="statusText">Connecting...</span></span>
+    <button class="refresh-btn" onclick="loadAll()">⟳ Refresh</button>
+  </div>
+</header>
+
+<!-- KPIs -->
+<div class="grid" id="kpiGrid">
+  <div class="card"><div class="card-title">Version</div><div class="card-value accent" id="v">—</div><div class="card-sub" id="uptime"></div></div>
+  <div class="card"><div class="card-title">Active Memories</div><div class="card-value green" id="memActive">—</div><div class="card-sub" id="memSub"></div></div>
+  <div class="card"><div class="card-title">KG Entities</div><div class="card-value purple" id="kgEntities">—</div><div class="card-sub" id="kgSub"></div></div>
+  <div class="card"><div class="card-title">Open Tasks</div><div class="card-value yellow" id="openTasks">—</div><div class="card-sub" id="taskSub"></div></div>
+  <div class="card"><div class="card-title">Agents</div><div class="card-value cyan" id="agents">—</div><div class="card-sub" id="agentSub"></div></div>
+  <div class="card"><div class="card-title">Vector Index</div><div class="card-value pink" id="vectorIdx">—</div><div class="card-sub">Embedding coverage</div></div>
+</div>
+
+<!-- Memory by Type -->
+<div class="section-title">Memory Distribution</div>
+<div class="grid">
+  <div class="card">
+    <div class="card-title">By Type</div>
+    <div class="bar-chart" id="typeChart"></div>
+    <div style="height:20px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">By Age</div>
+    <div class="bar-chart" id="ageChart"></div>
+    <div style="height:20px"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">By Project</div>
+    <div class="bar-chart" id="projChart"></div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- Agents Table -->
+<div class="section-title">Agent Registry</div>
+<div class="table-card">
+  <table>
+    <thead><tr><th>Agent</th><th>Role</th><th>Channel</th><th>Status</th><th>Messages</th></tr></thead>
+    <tbody id="agentTable"><tr><td colspan="5" style="color:var(--text-dim)">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<!-- Recent Events -->
+<div class="section-title">Recent Events</div>
+<div class="table-card">
+  <table>
+    <thead><tr><th>Time</th><th>Type</th><th>Source</th><th>Details</th></tr></thead>
+    <tbody id="eventTable"><tr><td colspan="4" style="color:var(--text-dim)">Loading...</td></tr></tbody>
+  </table>
+</div>
+
+<div class="footer">
+  Auto-refreshes every 30s · <code id="lastRefresh">—</code>
+</div>
+
+<script>
+const isGitHubPages = location.hostname.includes('github.io');
+
+function loadDemoData() {
+  document.getElementById('statusPill').className = 'status-pill online';
+  document.getElementById('statusText').textContent = 'Demo Mode';
+  document.getElementById('v').textContent = 'v7.0.0';
+  document.getElementById('uptime').textContent = 'Static demo — connect to a PAR instance for live data';
+  document.getElementById('memActive').textContent = '284';
+  document.getElementById('memSub').textContent = '47 archived · 12 pinned';
+  document.getElementById('kgEntities').textContent = '156';
+  document.getElementById('kgSub').textContent = '312 relationships';
+  document.getElementById('openTasks').textContent = '8';
+  document.getElementById('taskSub').textContent = '23 total · 15 done';
+  document.getElementById('agents').textContent = '4';
+  document.getElementById('agentSub').textContent = '3 active';
+  document.getElementById('vectorIdx').textContent = '97%';
+
+  renderBarChart('typeChart', { decision: 68, insight: 94, observation: 72, task: 31, handoff: 19 },
+    ['#6366f1', '#a855f7', '#06b6d4', '#f59e0b', '#ec4899']);
+  renderBarChart('ageChart', { Today: 8, Week: 42, Month: 118, Older: 116 },
+    ['#22c55e', '#06b6d4', '#f59e0b', '#ef4444']);
+  renderBarChart('projChart', { 'my-app': 89, 'api-svc': 62, par: 45, 'ml-pipe': 34, other: 54 },
+    ['#6366f1', '#a855f7', '#06b6d4', '#f59e0b', '#ec4899', '#22c55e']);
+
+  document.getElementById('agentTable').innerHTML = [
+    { name: 'Agent-Alpha', role: 'Code Assistant', channel: 'MCP', status: 'active', msgs: 1247 },
+    { name: 'Agent-Beta', role: 'Task Runner', channel: 'MCP', status: 'active', msgs: 892 },
+    { name: 'Agent-Gamma', role: 'Reviewer', channel: 'CLI', status: 'active', msgs: 456 },
+    { name: 'Watchtower', role: 'Auto-updater', channel: 'System', status: 'idle', msgs: 23 },
+  ].map(a => `
+    <tr>
+      <td><strong>${a.name}</strong></td>
+      <td style="color:var(--text-dim)">${a.role}</td>
+      <td style="color:var(--text-dim)">${a.channel}</td>
+      <td><span class="badge ${a.status === 'active' ? 'active' : 'idle'}">${a.status}</span></td>
+      <td style="font-family:'JetBrains Mono',monospace">${a.msgs}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('eventTable').innerHTML = [
+    { time: 'Just now', type: 'system.heartbeat', source: 'gateway', detail: 'uptime: 14d 7h' },
+    { time: '6h ago', type: 'memory.consolidated', source: 'cron', detail: '3 clusters distilled' },
+    { time: '6h ago', type: 'memory.retained', source: 'cron', detail: '2 memories archived' },
+    { time: '1d ago', type: 'deploy.complete', source: 'workflow', detail: 'v7.0.0 deployed' },
+    { time: '1d ago', type: 'task.updated', source: 'agent-alpha', detail: 'API migration → done' },
+  ].map(e => `
+    <tr>
+      <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim)">${e.time}</td>
+      <td>${e.type}</td>
+      <td style="color:var(--text-dim)">${e.source}</td>
+      <td style="color:var(--text-dim)">${e.detail}</td>
+    </tr>
+  `).join('');
+
+  document.getElementById('lastRefresh').textContent = 'Demo mode (static)';
+}
+
+async function loadAll() {
+  if (isGitHubPages) { loadDemoData(); return; }
+  const GW = location.origin;
+  try {
+    const health = await fetch(`${GW}/health`).then(r => r.json());
+    document.getElementById('statusPill').className = 'status-pill online';
+    document.getElementById('statusText').textContent = `Online · ${health.version}`;
+    document.getElementById('v').textContent = health.version;
+  } catch {
+    document.getElementById('statusPill').className = 'status-pill offline';
+    document.getElementById('statusText').textContent = 'Offline';
+    return;
+  }
+
+  try {
+    const [mems, tasks, agents, events, kg] = await Promise.all([
+      fetch(`${GW}/fs/memory`).then(r => r.json()).catch(() => []),
+      fetch(`${GW}/fs/tasks`).then(r => r.json()).catch(() => []),
+      fetch(`${GW}/fs/agents`).then(r => r.json()).catch(() => []),
+      fetch(`${GW}/fs/events`).then(r => r.json()).catch(() => []),
+      fetch(`${GW}/fs/knowledge`).then(r => r.json()).catch(() => []),
+    ]);
+
+    const memFiles = mems.filter(f => f.name?.endsWith('.json'));
+    const memData = [];
+    for (const f of memFiles.slice(0, 300)) {
+      try { memData.push(await fetch(`${GW}/fs/memory/${f.name}`).then(r => r.json())); } catch {}
+    }
+
+    const active = memData.filter(m => !m.archived);
+    const archived = memData.filter(m => m.archived);
+    const pinned = memData.filter(m => m.pinned);
+
+    document.getElementById('memActive').textContent = active.length;
+    document.getElementById('memSub').textContent = `${archived.length} archived · ${pinned.length} pinned`;
+
+    const kgFiles = kg.filter(f => f.name?.startsWith('entity__'));
+    const kgRels = kg.filter(f => f.name?.startsWith('rel__'));
+    document.getElementById('kgEntities').textContent = kgFiles.length;
+    document.getElementById('kgSub').textContent = `${kgRels.length} relationships`;
+
+    const taskFiles = tasks.filter(f => f.name?.endsWith('.json'));
+    const taskData = [];
+    for (const f of taskFiles.slice(0, 100)) {
+      try { taskData.push(await fetch(`${GW}/fs/tasks/${f.name}`).then(r => r.json())); } catch {}
+    }
+    const openT = taskData.filter(t => t.status !== 'done');
+    document.getElementById('openTasks').textContent = openT.length;
+    document.getElementById('taskSub').textContent = `${taskData.length} total · ${taskData.filter(t => t.status === 'done').length} done`;
+
+    const agentFiles = agents.filter(f => f.name?.endsWith('.json'));
+    const agentData = [];
+    for (const f of agentFiles) {
+      try { agentData.push(await fetch(`${GW}/fs/agents/${f.name}`).then(r => r.json())); } catch {}
+    }
+    document.getElementById('agents').textContent = agentData.length;
+    document.getElementById('agentSub').textContent = `${agentData.filter(a => a.status === 'active').length} active`;
+
+    const withEmbed = active.filter(m => m.embedding).length;
+    document.getElementById('vectorIdx').textContent = `${Math.round(withEmbed / Math.max(active.length, 1) * 100)}%`;
+
+    renderBarChart('typeChart', groupBy(active, 'type'), ['#6366f1', '#a855f7', '#06b6d4', '#f59e0b', '#ec4899']);
+    const now = Date.now();
+    const ageData = { Today: 0, Week: 0, Month: 0, Older: 0 };
+    active.forEach(m => {
+      const age = now - new Date(m.created).getTime();
+      if (age < 86400000) ageData.Today++;
+      else if (age < 604800000) ageData.Week++;
+      else if (age < 2592000000) ageData.Month++;
+      else ageData.Older++;
+    });
+    renderBarChart('ageChart', ageData, ['#22c55e', '#06b6d4', '#f59e0b', '#ef4444']);
+    renderBarChart('projChart', groupBy(active, 'project'), ['#6366f1', '#a855f7', '#06b6d4', '#f59e0b', '#ec4899', '#22c55e']);
+
+    document.getElementById('agentTable').innerHTML = agentData.map(a => `
+      <tr>
+        <td><strong>${a.name || a.id}</strong></td>
+        <td style="color:var(--text-dim)">${a.role || '—'}</td>
+        <td style="color:var(--text-dim)">${a.channel || '—'}</td>
+        <td><span class="badge ${a.status === 'active' ? 'active' : 'idle'}">${a.status}</span></td>
+        <td style="font-family:'JetBrains Mono',monospace">${a.stats?.messages_processed || 0}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="5" style="color:var(--text-dim)">No agents</td></tr>';
+
+    const eventFiles = events.filter(f => f.name?.endsWith('.json'));
+    const eventData = [];
+    for (const f of eventFiles.slice(-30)) {
+      try { eventData.push(await fetch(`${GW}/fs/events/${f.name}`).then(r => r.json())); } catch {}
+    }
+    eventData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    document.getElementById('eventTable').innerHTML = eventData.slice(0, 10).map(e => `
+      <tr>
+        <td style="font-family:'JetBrains Mono',monospace;font-size:0.72rem;color:var(--text-dim)">${new Date(e.timestamp).toLocaleString()}</td>
+        <td>${e.type}</td>
+        <td style="color:var(--text-dim)">${e.source}</td>
+        <td style="color:var(--text-dim);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${JSON.stringify(e.payload || {}).slice(0, 80)}</td>
+      </tr>
+    `).join('') || '<tr><td colspan="4" style="color:var(--text-dim)">No events</td></tr>';
+
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+  }
+
+  document.getElementById('lastRefresh').textContent = new Date().toLocaleTimeString();
+}
+
+function groupBy(arr, key) {
+  const groups = {};
+  arr.forEach(item => {
+    const k = item[key] || 'unknown';
+    groups[k] = (groups[k] || 0) + 1;
+  });
+  return groups;
+}
+
+function renderBarChart(containerId, data, colors) {
+  const container = document.getElementById(containerId);
+  const entries = Object.entries(data);
+  const max = Math.max(...entries.map(e => e[1]), 1);
+  container.innerHTML = entries.map(([label, count], i) =>
+    `<div class="bar" style="height:${Math.max(count / max * 100, 3)}%;background:${colors[i % colors.length]}" title="${label}: ${count}"><span class="bar-label">${label}</span></div>`
+  ).join('');
+}
+
+loadAll();
+if (!isGitHubPages) setInterval(loadAll, 30000);
+</script>
+</body>
+</html>

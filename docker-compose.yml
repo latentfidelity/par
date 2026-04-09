@@ -1,0 +1,13 @@
+services:
+  mcp-gateway:
+    build: ./mcp
+    restart: unless-stopped
+    ports:
+      - "${MCP_PORT:-3100}:3100"
+    volumes:
+      - ./meta:/data/meta
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

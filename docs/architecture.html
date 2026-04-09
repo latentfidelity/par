@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PAR v7.0 — System Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <script src="https://code.iconify.design/3/3.1.0/iconify.min.js"></script>
+  <style>
+    /* ═══════════════════════════════════════════════════
+       CrispWhite Neumorphic Design System — Tokens
+       ═══════════════════════════════════════════════════ */
+
+    :root {
+      --bg-color: #e0e5ec;
+      --shadow-light: #ffffff;
+      --shadow-dark: #a3b1c6;
+      --primary: #6366f1;
+      --text-dark: #374151;
+      --text-muted: #6b7280;
+      --green: #22c55e;
+      --red: #ef4444;
+      --amber: #f59e0b;
+      --cyan: #06b6d4;
+      --purple: #a855f7;
+      --rose: #f43f5e;
+      --teal: #14b8a6;
+      --pink: #ec4899;
+      --orange: #f97316;
+      --fuchsia: #e879f9;
+      --violet: #c084fc;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-dark);
+      min-height: 100vh;
+    }
+
+    /* Neumorphic States */
+    .neu-flat {
+      background: #e0e5ec;
+      box-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #ffffff;
+    }
+
+    .neu-pressed {
+      background: #e0e5ec;
+      box-shadow: inset 4px 4px 8px #a3b1c6, inset -4px -4px 8px #ffffff;
+    }
+
+    .neu-convex {
+      background: linear-gradient(145deg, #f0f5fc, #cacfd6);
+      box-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #ffffff;
+    }
+
+    .neu-btn {
+      cursor: pointer;
+      transition: all 0.2s ease;
+      border: none;
+      outline: none;
+    }
+
+    .neu-btn:hover {
+      box-shadow: 4px 4px 8px #a3b1c6, -4px -4px 8px #ffffff;
+    }
+
+    .neu-btn:active, .neu-btn.active {
+      box-shadow: inset 4px 4px 8px #a3b1c6, inset -4px -4px 8px #ffffff;
+    }
+
+    /* ═══════════════════════════════════════════════════
+       Layout
+       ═══════════════════════════════════════════════════ */
+
+    header {
+      text-align: center;
+      padding: 2.5rem 1.5rem 0;
+    }
+
+    header h1 {
+      font-size: 2rem;
+      font-weight: 600;
+      color: var(--text-dark);
+      letter-spacing: -0.02em;
+    }
+
+    header h1 .accent {
+      color: var(--primary);
+    }
+
+    header p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      margin-top: 0.35rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 400;
+    }
+
+    .tab-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 1.75rem 1.5rem 1rem;
+      flex-wrap: wrap;
+    }
+
+    .tab {
+      padding: 0.65rem 1.5rem;
+      border-radius: 12px;
+      background: #e0e5ec;
+      box-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #ffffff;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-family: 'JetBrains Mono', monospace;
+      border: none;
+      outline: none;
+    }
+
+    .tab:hover {
+      box-shadow: 4px 4px 8px #a3b1c6, -4px -4px 8px #ffffff;
+      color: var(--text-dark);
+    }
+
+    .tab.active {
+      box-shadow: inset 4px 4px 8px #a3b1c6, inset -4px -4px 8px #ffffff;
+      color: var(--primary);
+      font-weight: 600;
+    }
+
+    .view-container {
+      width: 100%;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 0 1.5rem 2rem;
+    }
+
+    /* Stats bar */
+    .stats-bar {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 1rem;
+      padding: 0.5rem 0 1.5rem;
+    }
+
+    .stat-card {
+      background: #e0e5ec;
+      box-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #ffffff;
+      border-radius: 16px;
+      padding: 1.25rem 1rem;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .stat-card:hover {
+      box-shadow: 4px 4px 8px #a3b1c6, -4px -4px 8px #ffffff;
+    }
+
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 600;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .stat-label {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-top: 0.3rem;
+      font-weight: 500;
+    }
+
+    /* Graph container */
+    #graph-container {
+      width: 100%;
+      height: 65vh;
+      min-height: 480px;
+      background: #e0e5ec;
+      box-shadow: inset 4px 4px 8px #a3b1c6, inset -4px -4px 8px #ffffff;
+      border-radius: 24px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #graph-container svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* D3 node styling */
+    .node-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 9px;
+      fill: var(--text-dark);
+      pointer-events: none;
+      text-anchor: middle;
+      font-weight: 500;
+    }
+
+    .node-sublabel {
+      font-family: 'Inter', sans-serif;
+      font-size: 7.5px;
+      fill: var(--text-muted);
+      pointer-events: none;
+      text-anchor: middle;
+      font-weight: 400;
+    }
+
+    .link {
+      stroke-opacity: 0.25;
+      stroke-width: 1.5;
+    }
+
+    /* Tooltip */
+    .tooltip {
+      position: absolute;
+      padding: 1rem 1.25rem;
+      background: #e0e5ec;
+      box-shadow: 6px 6px 12px #a3b1c6, -6px -6px 12px #ffffff;
+      border-radius: 16px;
+      color: var(--text-dark);
+      font-size: 0.8rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      z-index: 100;
+      max-width: 320px;
+      line-height: 1.5;
+    }
+
+    .tooltip .tt-title {
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 0.25rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .tooltip .tt-type {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+      margin-bottom: 0.3rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .tooltip .tt-body {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    /* Legend */
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      justify-content: center;
+      padding: 1.25rem 0.5rem;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .legend-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      box-shadow: 2px 2px 4px #a3b1c6, -2px -2px 4px #ffffff;
+    }
+
+    /* Tool table */
+    .tool-table-container {
+      display: none;
+      overflow-x: auto;
+      background: #e0e5ec;
+      box-shadow: inset 4px 4px 8px #a3b1c6, inset -4px -4px 8px #ffffff;
+      border-radius: 24px;
+      padding: 1.5rem;
+    }
+
+    .tool-table-container.active { display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    thead th {
+      padding: 0.8rem 1rem;
+      text-align: left;
+      font-weight: 600;
+      color: var(--primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    tbody tr {
+      background: #e0e5ec;
+      box-shadow: 3px 3px 6px #a3b1c6, -3px -3px 6px #ffffff;
+      border-radius: 12px;
+      transition: all 0.2s;
+    }
+
+    tbody tr:hover {
+      box-shadow: 2px 2px 4px #a3b1c6, -2px -2px 4px #ffffff;
+    }
+
+    tbody td {
+      padding: 0.7rem 1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+    }
+
+    tbody td:first-child { border-radius: 12px 0 0 12px; }
+    tbody td:last-child { border-radius: 0 12px 12px 0; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 999px;
+      font-size: 0.6rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .badge-new {
+      color: var(--green);
+      background: #e0e5ec;
+      box-shadow: inset 2px 2px 4px #a3b1c6, inset -2px -2px 4px #ffffff;
+    }
+
+    .badge-core {
+      color: var(--text-muted);
+      background: #e0e5ec;
+      box-shadow: inset 2px 2px 4px #a3b1c6, inset -2px -2px 4px #ffffff;
+    }
+
+    /* Footer */
+    .footer-note {
+      text-align: center;
+      padding: 1rem 0 2.5rem;
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .footer-note a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 <span class="accent">PAR v7.0</span></h1>
+  <p>Persistent Agent Runtime — 55 MCP Tools · Knowledge Graph · Autonomous Maintenance</p>
+</header>
+
+<div class="tab-bar">
+  <button class="tab active" data-view="data">
+    <span class="iconify" data-icon="lucide:database" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
+    Data Topology
+  </button>
+  <button class="tab" data-view="table">
+    <span class="iconify" data-icon="lucide:list" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
+    Tool Registry (55)
+  </button>
+</div>
+
+<div class="view-container">
+  <div class="stats-bar" id="stats-bar"></div>
+  <div id="graph-container" style="position:relative">
+    <button class="neu-btn" id="resetGraphBtn" style="position:absolute;top:16px;right:16px;z-index:10;padding:8px 16px;border-radius:10px;background:#e0e5ec;box-shadow:4px 4px 8px #a3b1c6,-4px -4px 8px #ffffff;font-family:'JetBrains Mono',monospace;font-size:0.75rem;color:var(--text-muted);display:none" onclick="resetGraph()">⟳ Reset</button>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <div class="legend" id="legend"></div>
+  <div class="tool-table-container" id="tool-table-view"></div>
+</div>
+
+<div class="footer-note">
+  Built with <a href="https://d3js.org">D3.js</a> · Data sourced from <code>gateway.js v7.0.0</code> · Neumorphic Design System
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// DATA — exact from gateway.js v7.0.0 (55 tools)
+// ═══════════════════════════════════════════════════════
+
+const CATEGORIES = {
+  core:       { color: '#6366f1', label: 'Core' },
+  memory:     { color: '#a855f7', label: 'Semantic Memory (11)' },
+  knowledge:  { color: '#f87171', label: 'Knowledge Graph (5)' },
+  project:    { color: '#22c55e', label: 'Project Registry' },
+  task:       { color: '#f59e0b', label: 'Task Queue' },
+  agent:      { color: '#f472b6', label: 'Agent Fleet (4)' },
+  event:      { color: '#fb923c', label: 'Event System (3)' },
+  workflow:   { color: '#38bdf8', label: 'Workflow Engine (4)' },
+  meta:       { color: '#06b6d4', label: 'Meta KV Store' },
+  snippet:    { color: '#ef4444', label: 'Snippet Store' },
+  file:       { color: '#14b8a6', label: 'File Store' },
+  skill:      { color: '#ec4899', label: 'Skill System (4)' },
+  dataset:    { color: '#f97316', label: 'Dataset Registry (4)' },
+  infra:      { color: '#64748b', label: 'Infrastructure' },
+  service:    { color: '#60a5fa', label: 'Service' },
+  storage:    { color: '#475569', label: 'Storage' },
+};
+
+const TOOLS = [
+  { id: 'server_status',  cat: 'core',     desc: 'Full system status with uptime, entity counts, tool count' },
+  { id: 'context_load',   cat: 'core',     desc: 'One-shot project context init: minimal/standard/deep' },
+  { id: 'memory_store',   cat: 'memory',   desc: 'Store with semantic embedding (decision, insight, task, handoff, observation)' },
+  { id: 'memory_search',  cat: 'memory',   desc: 'Search by meaning using cosine similarity' },
+  { id: 'memory_search_advanced', cat: 'memory', desc: 'Compound structured filters: AND/OR/NOT, tags, dates, pinned' },
+  { id: 'memory_log',     cat: 'memory',   desc: 'Retrieve recent memories chronologically' },
+  { id: 'memory_timeline', cat: 'memory',  desc: 'Natural language time queries with day/week/project grouping' },
+  { id: 'memory_stats',   cat: 'memory',   desc: 'Dashboard: type/project/age distribution, KG stats, embedding coverage' },
+  { id: 'memory_pin',     cat: 'memory',   desc: 'Pin memory to protect from retention and consolidation' },
+  { id: 'memory_unpin',   cat: 'memory',   desc: 'Remove pin protection from a memory' },
+  { id: 'memory_tag',     cat: 'memory',   desc: 'Add/remove/set tags on memories (single or batch)' },
+  { id: 'memory_consolidate', cat: 'memory', desc: 'Sleep-cycle consolidation: cluster, distill, archive' },
+  { id: 'memory_retain',  cat: 'memory',   desc: 'Retention policies: auto-archive old memories with protection' },
+  { id: 'knowledge_extract', cat: 'knowledge', desc: 'Extract entity-relationship triples from text' },
+  { id: 'knowledge_query',   cat: 'knowledge', desc: 'Query entity neighborhood with multi-hop traversal' },
+  { id: 'knowledge_ingest',  cat: 'knowledge', desc: 'Bulk-process memories to build knowledge graph' },
+  { id: 'knowledge_context', cat: 'knowledge', desc: 'Rich entity context with relationships and memories' },
+  { id: 'knowledge_merge',   cat: 'knowledge', desc: 'Merge duplicate entities: transfer rels, accumulate mentions' },
+  { id: 'project_register', cat: 'project', desc: 'Register with metadata, tech stack, status' },
+  { id: 'project_list',   cat: 'project',  desc: 'List all projects (filterable)' },
+  { id: 'project_get',    cat: 'project',  desc: 'Full project details with open task count' },
+  { id: 'task_add',       cat: 'task',     desc: 'Add tasks with priority levels' },
+  { id: 'task_list',      cat: 'task',     desc: 'List by project and/or status' },
+  { id: 'task_update',    cat: 'task',     desc: 'Update status, priority, details' },
+  { id: 'agent_register', cat: 'agent',    desc: 'Register agent with capabilities, model, channel' },
+  { id: 'agent_list',     cat: 'agent',    desc: 'List agents with status filtering' },
+  { id: 'agent_get',      cat: 'agent',    desc: 'Full agent details including stats and preferences' },
+  { id: 'agent_update',   cat: 'agent',    desc: 'Update status, increment stats, merge preferences' },
+  { id: 'event_trigger',  cat: 'event',    desc: 'Emit event + auto-start matching workflows' },
+  { id: 'event_subscribe', cat: 'event',   desc: 'Subscribe agents to event type patterns' },
+  { id: 'event_log',      cat: 'event',    desc: 'Query event history with filters' },
+  { id: 'workflow_register', cat: 'workflow', desc: 'Register executable step sequences with triggers' },
+  { id: 'workflow_run',   cat: 'workflow', desc: 'Start or advance workflow with step tracking' },
+  { id: 'workflow_status', cat: 'workflow', desc: 'Get run progress step-by-step' },
+  { id: 'workflow_list',  cat: 'workflow', desc: 'List workflow definitions with run counts' },
+  { id: 'meta_store',     cat: 'meta',     desc: 'Persistent key-value storage' },
+  { id: 'meta_retrieve',  cat: 'meta',     desc: 'Retrieve by key' },
+  { id: 'meta_list',      cat: 'meta',     desc: 'List all keys' },
+  { id: 'snippet_save',   cat: 'snippet',  desc: 'Save reusable code patterns with tags' },
+  { id: 'snippet_search', cat: 'snippet',  desc: 'Full-text search across title, content, tags' },
+  { id: 'snippet_get',    cat: 'snippet',  desc: 'Retrieve full snippet' },
+  { id: 'snippet_update', cat: 'snippet',  desc: 'Update content, tags, or language' },
+  { id: 'file_store',     cat: 'file',     desc: 'Persistent file storage' },
+  { id: 'file_read',      cat: 'file',     desc: 'Read from persistent storage' },
+  { id: 'file_index',     cat: 'infra',    desc: 'Build or retrieve project file tree (24h cache)' },
+  { id: 'skill_list',     cat: 'skill',    desc: 'Browse skills by tag or type' },
+  { id: 'skill_get',      cat: 'skill',    desc: 'Get full skill definition with instructions' },
+  { id: 'skill_create',   cat: 'skill',    desc: 'Create knowledge, execution, or hybrid skills' },
+  { id: 'skill_run',      cat: 'skill',    desc: 'Execute a skill script on the server' },
+  { id: 'dataset_register', cat: 'dataset', desc: 'Register dataset with metadata and tags' },
+  { id: 'dataset_list',   cat: 'dataset',  desc: 'List datasets (domain/project/status)' },
+  { id: 'dataset_get',    cat: 'dataset',  desc: 'Get full dataset details' },
+  { id: 'dataset_search', cat: 'dataset',  desc: 'Search sprite index by tags (AND logic)' },
+  { id: 'system_health',  cat: 'infra',    desc: 'One-shot infra audit: services, storage, memory, disk' },
+  { id: 'system_changelog', cat: 'infra',  desc: 'Human-readable changelog from events, memories, workflows' },
+];
+
+const SERVICES = [
+  { id: 'mcp-gateway',  port: 3100, desc: 'MCP Server — Streamable HTTP + SSE', status: 'core' },
+  { id: 'agent-alpha',  port: null, desc: 'Example agent — code assistant', status: 'active' },
+  { id: 'agent-beta',   port: 3300, desc: 'Example agent — task runner', status: 'active' },
+  { id: 'watchtower',   port: null, desc: 'Auto-update Docker images', status: 'active' },
+];
+
+const STORAGE_DIRS = [
+  { id: 'memory',      desc: 'Semantic memories + embeddings' },
+  { id: 'knowledge',   desc: 'Entity-relationship graph' },
+  { id: 'projects',    desc: 'Project registrations' },
+  { id: 'tasks',       desc: 'Task queue items' },
+  { id: 'kv',          desc: 'Key-value entries' },
+  { id: 'files',       desc: 'Stored files' },
+  { id: 'snippets',    desc: 'Code snippets' },
+  { id: 'skills',      desc: 'Agent skill definitions' },
+  { id: 'datasets',    desc: 'Dataset registry' },
+  { id: 'agents',      desc: 'Agent personas' },
+  { id: 'events',      desc: 'Event log entries' },
+  { id: 'workflows',   desc: 'Workflow definitions' },
+  { id: 'workflow_runs', desc: 'Workflow execution tracking' },
+];
+
+// ═══════════════════════
+// STATS BAR
+// ═══════════════════════
+
+const stats = [
+  { value: TOOLS.length, label: 'MCP Tools', color: 'var(--primary)' },
+  { value: Object.keys(CATEGORIES).filter(k => !['service','storage'].includes(k)).length, label: 'Tool Groups', color: 'var(--green)' },
+  { value: SERVICES.length, label: 'Services', color: 'var(--cyan)' },
+  { value: STORAGE_DIRS.length, label: 'Storage Dirs', color: 'var(--amber)' },
+];
+
+const statsBar = document.getElementById('stats-bar');
+stats.forEach(s => {
+  const card = document.createElement('div');
+  card.className = 'stat-card';
+  card.innerHTML = `<div class="stat-value" style="color:${s.color}">${s.value}</div><div class="stat-label">${s.label}</div>`;
+  statsBar.appendChild(card);
+});
+
+// ═══════════════════════
+// LEGEND
+// ═══════════════════════
+
+const legendEl = document.getElementById('legend');
+Object.entries(CATEGORIES).forEach(([, cfg]) => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = `<span class="legend-dot" style="background:${cfg.color}"></span>${cfg.label}`;
+  legendEl.appendChild(item);
+});
+
+// ═══════════════════════
+// TABS
+// ═══════════════════════
+
+let currentView = 'data';
+let currentSimulation = null;
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentView = tab.dataset.view;
+    render();
+  });
+});
+
+function resetGraph() {
+  if (currentSimulation) {
+    currentSimulation.alpha(1).restart();
+  }
+}
+
+function render() {
+  const graphEl = document.getElementById('graph-container');
+  const tableEl = document.getElementById('tool-table-view');
+  const resetBtn = document.getElementById('resetGraphBtn');
+
+  if (currentView === 'data') {
+    graphEl.style.display = 'block';
+    tableEl.classList.remove('active');
+    resetBtn.style.display = 'block';
+    buildForceGraph();
+  } else if (currentView === 'table') {
+    graphEl.style.display = 'none';
+    tableEl.classList.add('active');
+    resetBtn.style.display = 'none';
+    buildToolTable();
+  }
+}
+
+// ═══════════════════════════════════════════════
+// D3 FORCE-DIRECTED GRAPH
+// ═══════════════════════════════════════════════
+
+function buildForceGraph() {
+  const container = document.getElementById('graph-container');
+  const resetBtn = document.getElementById('resetGraphBtn');
+  container.innerHTML = '';
+  container.appendChild(resetBtn);
+
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+
+  const svg = d3.select(container).append('svg')
+    .attr('viewBox', `0 0 ${width} ${height}`)
+    .attr('preserveAspectRatio', 'xMidYMid meet');
+
+  // Neumorphic-style node shadow filter
+  const defs = svg.append('defs');
+
+  const neuShadow = defs.append('filter').attr('id', 'neu-node').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+  neuShadow.append('feDropShadow').attr('dx', '2').attr('dy', '2').attr('stdDeviation', '3').attr('flood-color', '#a3b1c6').attr('flood-opacity', '0.6');
+  neuShadow.append('feDropShadow').attr('dx', '-2').attr('dy', '-2').attr('stdDeviation', '3').attr('flood-color', '#ffffff').attr('flood-opacity', '0.7');
+
+  const neuGlow = defs.append('filter').attr('id', 'neu-glow').attr('x', '-50%').attr('y', '-50%').attr('width', '200%').attr('height', '200%');
+  neuGlow.append('feDropShadow').attr('dx', '2').attr('dy', '2').attr('stdDeviation', '3').attr('flood-color', '#a3b1c6').attr('flood-opacity', '0.5');
+  neuGlow.append('feDropShadow').attr('dx', '-2').attr('dy', '-2').attr('stdDeviation', '3').attr('flood-color', '#ffffff').attr('flood-opacity', '0.6');
+  neuGlow.append('feGaussianBlur').attr('in', 'SourceGraphic').attr('stdDeviation', '0.5').attr('result', 'blur');
+  const feMerge = neuGlow.append('feMerge');
+  feMerge.append('feMergeNode').attr('in', 'blur');
+  feMerge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+
+
+  const storageCenter = { id: '/data/meta', group: 'storage', color: '#475569', radius: 28, desc: 'Persistent flat-file JSON\nDocker volume mount\n/data/par/meta', fixed: true, fx: width/2, fy: height/2 };
+  const dirNodes = STORAGE_DIRS.map(d => ({
+    id: `${d.id}/`, group: 'storage', color: '#64748b',
+    radius: 14, desc: d.desc,
+  }));
+
+  const dirToolMap = {
+    'kv/': ['meta_store', 'meta_retrieve', 'meta_list'],
+    'files/': ['file_store', 'file_read'],
+    'projects/': ['project_register', 'project_list', 'project_get'],
+    'tasks/': ['task_add', 'task_list', 'task_update'],
+    'snippets/': ['snippet_save', 'snippet_search', 'snippet_get', 'snippet_update'],
+    'skills/': ['skill_list', 'skill_get', 'skill_create', 'skill_run'],
+    'datasets/': ['dataset_register', 'dataset_list', 'dataset_get', 'dataset_search'],
+    'memory/': ['memory_store', 'memory_search', 'memory_log', 'memory_consolidate', 'memory_retain'],
+    'knowledge/': ['knowledge_extract', 'knowledge_query', 'knowledge_ingest', 'knowledge_context', 'knowledge_merge'],
+    'agents/': ['agent_register', 'agent_list', 'agent_get', 'agent_update'],
+    'events/': ['event_trigger', 'event_subscribe', 'event_log'],
+    'workflows/': ['workflow_register', 'workflow_run', 'workflow_status', 'workflow_list'],
+  };
+
+  const toolNodes = [], toolLinks = [];
+  Object.entries(dirToolMap).forEach(([dir, toolIds]) => {
+    toolIds.forEach(tid => {
+      const tool = TOOLS.find(t => t.id === tid);
+      if (tool) {
+        toolNodes.push({ id: tid, group: tool.cat, color: CATEGORIES[tool.cat].color, radius: 8, desc: tool.desc });
+        toolLinks.push({ source: tid, target: dir, color: CATEGORIES[tool.cat].color });
+      }
+      });
+    });
+
+  const nodes = [storageCenter, ...dirNodes, ...toolNodes];
+  const links = [...dirNodes.map(d => ({ source: '/data/meta', target: d.id, color: '#475569' })), ...toolLinks];
+
+  // Simulation
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(links).id(d => d.id).distance(d => 60 + (nodes.find(n => n.id === (d.source.id || d.source))?.radius || 10)))
+    .force('charge', d3.forceManyBody().strength(d => -100 - d.radius * 3))
+    .force('center', d3.forceCenter(width / 2, height / 2))
+    .force('collision', d3.forceCollide().radius(d => d.radius + 8))
+    .force('x', d3.forceX(width / 2).strength(0.03))
+    .force('y', d3.forceY(height / 2).strength(0.03));
+
+  currentSimulation = simulation;
+
+  const g = svg.append('g');
+  svg.call(d3.zoom().scaleExtent([0.3, 3]).on('zoom', (event) => g.attr('transform', event.transform)));
+
+  // Links — softer on the neumorphic surface
+  const link = g.append('g').selectAll('line').data(links).join('line')
+    .attr('class', 'link')
+    .attr('stroke', d => d.color || '#a3b1c6');
+
+  // Nodes
+  const node = g.append('g').selectAll('g').data(nodes).join('g')
+    .call(d3.drag()
+      .on('start', (event, d) => { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on('drag', (event, d) => { d.fx = event.x; d.fy = event.y; })
+      .on('end', (event, d) => { if (!event.active) simulation.alphaTarget(0); if (!d.fixed) { d.fx = null; d.fy = null; } })
+    );
+
+  // Neumorphic node circles — the surface color matches the bg
+  node.append('circle')
+    .attr('r', d => d.radius)
+    .attr('fill', '#e0e5ec')
+    .attr('stroke', d => d.color)
+    .attr('stroke-width', d => d.isNew || d.hasNew ? 2.5 : 1.5)
+    .attr('stroke-dasharray', d => d.isNew || d.hasNew ? '5 3' : 'none')
+    .style('filter', 'url(#neu-node)')
+    .style('cursor', 'pointer');
+
+  // Colored accent dot inside the node
+  node.append('circle')
+    .attr('r', d => Math.max(d.radius * 0.45, 4))
+    .attr('fill', d => d.color)
+    .attr('fill-opacity', 0.2)
+    .style('pointer-events', 'none');
+
+  // New badge — convex green dot
+  node.filter(d => d.isNew || d.hasNew)
+    .append('circle')
+    .attr('r', 5)
+    .attr('cx', d => d.radius * 0.7)
+    .attr('cy', d => -d.radius * 0.7)
+    .attr('fill', '#22c55e')
+    .attr('stroke', '#e0e5ec')
+    .attr('stroke-width', 2)
+    .style('filter', 'url(#neu-glow)');
+
+  // Labels
+  node.append('text').attr('class', 'node-label').attr('dy', d => d.radius + 14).text(d => d.id);
+  node.filter(d => d.toolCount).append('text').attr('class', 'node-sublabel').attr('dy', d => d.radius + 24).text(d => `${d.toolCount} tools`);
+
+  // Tooltip
+  const tooltip = d3.select('#tooltip');
+  node.on('mouseover', (event, d) => {
+    tooltip.style('opacity', 1)
+      .html(`<div class="tt-title">${d.id}</div><div class="tt-type">${d.group}</div><div class="tt-body">${d.desc.replace(/\n/g, '<br>')}</div>`)
+      .style('left', (event.pageX + 14) + 'px')
+      .style('top', (event.pageY - 14) + 'px');
+  })
+  .on('mousemove', (event) => {
+    tooltip.style('left', (event.pageX + 14) + 'px').style('top', (event.pageY - 14) + 'px');
+  })
+  .on('mouseout', () => tooltip.style('opacity', 0));
+
+  simulation.on('tick', () => {
+    link.attr('x1', d => d.source.x).attr('y1', d => d.source.y).attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+    node.attr('transform', d => `translate(${d.x},${d.y})`);
+  });
+}
+
+// ═══════════════════════
+// TOOL TABLE
+// ═══════════════════════
+
+function buildToolTable() {
+  const el = document.getElementById('tool-table-view');
+  let html = `<table><thead><tr><th>#</th><th>Tool</th><th>Category</th><th>Description</th><th>Version</th></tr></thead><tbody>`;
+
+  TOOLS.forEach((t, i) => {
+    const cat = CATEGORIES[t.cat];
+    const badge = `<span class="badge badge-core">${cat.label}</span>`;
+
+    html += `<tr>
+      <td style="color:var(--text-muted)">${i + 1}</td>
+      <td style="color:${cat.color}; font-weight:600">${t.id}</td>
+      <td><span style="color:${cat.color}">${cat.label}</span></td>
+      <td style="color:var(--text-muted); font-family:Inter,sans-serif; font-size:0.75rem">${t.desc}</td>
+      <td>${badge}</td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  el.innerHTML = html;
+}
+
+render();
+window.addEventListener('resize', () => { if (currentView !== 'table') render(); });
+</script>
+</body>
+</html>
