@@ -8,7 +8,7 @@ import fs from "fs";
 import path from "path";
 import { randomUUID } from "node:crypto";
 import { META_DIR, readJSON, writeJSON, listJSON, errorMessage } from "./lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "./lib/embedder.js";
+import { embed, cosineSimilarity } from "./lib/embedder.js";
 import { extractKG } from "./lib/knowledge.js";
 
 /** Module-level memoryIndex invalidator — call this from server.ts */

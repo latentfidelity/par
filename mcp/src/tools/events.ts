@@ -8,7 +8,7 @@ import path from "path";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
+import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
 
 export function registerEventTools(server: McpServer) {
 

@@ -7,7 +7,7 @@ import { z } from "zod";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, safeId, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
+import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
 
 export function registerRegistryTools(server: McpServer) {
   // ┌─────────────────────────────────────────────────────────┐

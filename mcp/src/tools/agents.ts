@@ -8,7 +8,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, DIRS, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
+import { META_DIR, DIRS, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
 import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
 import type { MemoryEntry } from "./context.js";
 

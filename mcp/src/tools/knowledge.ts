@@ -6,7 +6,7 @@ import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
+import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
 import { extractKG } from "../lib/knowledge.js";
 
 export function registerKnowledgeTools(server: McpServer) {

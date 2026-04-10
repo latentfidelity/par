@@ -1,16 +1,14 @@
 /**
  * Memory tools: memory_store, memory_search, memory_search_advanced, memory_log,
- * memory_pin, memory_unpin, memory_tag, memory_stats, memory_consolidate, memory_retain,
- * memory_timeline
+ * memory_pin, memory_unpin, memory_tag, memory_stats, memory_timeline
  */
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, safeId, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady, EMBEDDING_DIM } from "../lib/embedder.js";
-import { extractKG } from "../lib/knowledge.js";
+import { META_DIR, safeId, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
+import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
 import { type MemoryEntry, loadMemoryIndex as _loadIndex } from "./context.js";
 
 export function registerMemoryTools(

@@ -95,7 +95,7 @@ const app = express();
 // ── Security: CORS (restrict origins) ─────────────────────────
 const CORS_ORIGINS = process.env.MCP_CORS_ORIGINS
   ? process.env.MCP_CORS_ORIGINS.split(",").map((s: any) => s.trim())
-  : ["http://localhost:3100", "http://localhost:3100"];
+  : ["http://localhost:3100"];
 app.use(cors({ origin: CORS_ORIGINS }));
 
 // ── Security: Bearer token auth ───────────────────────────────
@@ -330,7 +330,7 @@ app.listen(PORT, "0.0.0.0", async () => {
   console.log(`   Health:          http://0.0.0.0:${PORT}/health`);
   console.log(`   Event Trigger:   http://0.0.0.0:${PORT}/trigger (POST)`);
   console.log(`   Meta storage:    ${META_DIR}`);
-  console.log(`   Security:        safePath ✓ | safeId ✓ | execFileSync ✓ | readJSON/writeJSON guards ✓`);
+  console.log(`   Security:        safePath ✓ | safeId ✓ | readJSON/writeJSON guards ✓`);
   console.log(`\n📦 Seeding defaults...`);
   seedDefaults();
   seedWorkflows();

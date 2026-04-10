@@ -1,5 +1,5 @@
 /**
- * System tools: context_load, system_health, file_index, experiment_log, snippet_update
+ * System tools: context_load, file_index, memory_retain, snippet_update
  */
 import fs from "fs";
 import path from "path";
@@ -7,8 +7,8 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { META_DIR, DIRS, readJSON, writeJSON, listJSON, safePath, textResult, errorResult, errorMessage } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
+import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
+import { embed, cosineSimilarity } from "../lib/embedder.js";
 import { type MemoryEntry, loadMemoryIndex as _loadIndex } from "./context.js";
 
 export function registerSystemTools(
