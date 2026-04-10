@@ -370,7 +370,7 @@
 
 <header>
   <h1>🧠 <span class="accent">PAR v7.0</span></h1>
-  <p>Persistent Agent Runtime — 55 MCP Tools · Knowledge Graph · Autonomous Maintenance</p>
+  <p>Persistent Agent Runtime — 56 MCP Tools · Knowledge Graph · Autonomous Maintenance</p>
 </header>
 
 <div class="tab-bar">
@@ -384,7 +384,7 @@
   </button>
   <button class="tab" data-view="table">
     <span class="iconify" data-icon="lucide:list" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
-    Tool Registry (55)
+    Tool Registry (56)
   </button>
 </div>
 
@@ -401,12 +401,12 @@
 </div>
 
 <div class="footer-note">
-  <a href="https://github.com/latentfidelity/par">GitHub</a> · <a href="https://latentfidelity.github.io/portfolio">Portfolio</a> · Built with <a href="https://d3js.org">D3.js</a> · 55 MCP tools · MIT License
+  <a href="https://github.com/latentfidelity/par">GitHub</a> · <a href="https://latentfidelity.github.io/portfolio">Portfolio</a> · Built with <a href="https://d3js.org">D3.js</a> · 56 MCP tools · MIT License
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════
-// DATA — exact from src/tools/*.ts v7.0.0 (55 tools)
+// DATA — exact from src/tools/*.ts v7.0.0 (56 tools)
 // ═══════════════════════════════════════════════════════
 
 const CATEGORIES = {
@@ -484,6 +484,7 @@ const TOOLS = [
   { id: 'dataset_search', cat: 'dataset',  desc: 'Search sprite index by tags (AND logic)' },
   { id: 'system_health',  cat: 'infra',    desc: 'One-shot infra audit: services, storage, memory, disk' },
   { id: 'system_changelog', cat: 'infra',  desc: 'Human-readable changelog from events, memories, workflows' },
+  { id: 'memory_audit',    cat: 'memory',  desc: 'Detect contradictions, staleness, and orphaned knowledge — dry_run by default' },
 ];
 
 const SERVICES = [
@@ -627,7 +628,7 @@ function buildForceGraph() {
     'snippets/': ['snippet_save', 'snippet_search', 'snippet_get', 'snippet_update'],
     'skills/': ['skill_list', 'skill_get', 'skill_create', 'skill_run'],
     'datasets/': ['dataset_register', 'dataset_list', 'dataset_get', 'dataset_search'],
-    'memory/': ['memory_store', 'memory_search', 'memory_log', 'memory_consolidate', 'memory_retain'],
+    'memory/': ['memory_store', 'memory_search', 'memory_log', 'memory_consolidate', 'memory_retain', 'memory_audit'],
     'knowledge/': ['knowledge_extract', 'knowledge_query', 'knowledge_ingest', 'knowledge_context', 'knowledge_merge'],
     'agents/': ['agent_register', 'agent_list', 'agent_get', 'agent_update'],
     'events/': ['event_trigger', 'event_subscribe', 'event_log'],
@@ -758,7 +759,7 @@ function buildToolTable() {
 const FLOW_NODES = [
   { id: 'agent',    label: 'Agent',           sub: 'MCP Client',        x: 0.08, y: 0.5,  color: '#6366f1', w: 120, h: 56 },
   { id: 'gateway',  label: 'MCP Gateway',     sub: 'HTTP + SSE',        x: 0.28, y: 0.5,  color: '#06b6d4', w: 130, h: 56 },
-  { id: 'router',   label: 'Tool Router',     sub: '55 tools · Zod',    x: 0.48, y: 0.5,  color: '#10b981', w: 130, h: 56 },
+  { id: 'router',   label: 'Tool Router',     sub: '56 tools · Zod',    x: 0.48, y: 0.5,  color: '#10b981', w: 130, h: 56 },
   { id: 'memory',   label: 'Memory Store',    sub: 'memory/*.json',     x: 0.72, y: 0.18, color: '#f59e0b', w: 130, h: 50 },
   { id: 'meta',     label: 'Meta KV',         sub: 'kv/*.json',         x: 0.72, y: 0.42, color: '#f59e0b', w: 120, h: 50 },
   { id: 'tasks',    label: 'Task Queue',      sub: 'tasks/*.json',      x: 0.72, y: 0.64, color: '#f59e0b', w: 120, h: 50 },
