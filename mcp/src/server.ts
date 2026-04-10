@@ -6,11 +6,10 @@ import express from "express";
 import cors from "cors";
 import fs from "fs";
 import path from "path";
-import { z } from "zod";
+
 import { randomUUID } from "node:crypto";
-import { embed, cosineSimilarity, isSemanticReady, EMBEDDING_DIM } from "./lib/embedder.js";
-import { execFileSync, execSync } from "node:child_process";
-import type { ToolResult } from "./types.js";
+import { embed, isSemanticReady } from "./lib/embedder.js";
+
 import {
   META_DIR, DIRS,
   safePath, safeId,
@@ -30,7 +29,7 @@ function trackCall(name: string) { _toolCalls.set(name, (_toolCalls.get(name) ||
 import type { MemoryEntry } from "./tools/context.js";
 let memoryIndex: MemoryEntry[] | null = null;
 
-import { extractKG } from "./lib/knowledge.js";
+
 
 // ══════════════════════════════════════════════════════════════
 //  MCP SERVER FACTORY
