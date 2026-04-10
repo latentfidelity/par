@@ -5,9 +5,9 @@
  * 384-dimensional embeddings, ~200ms per embed on CPU. Zero API costs.
  */
 
-let pipeline = null;
+let pipeline: any | null = null;
 let modelReady = false;
-let initPromise = null;
+let initPromise: Promise<void> | null = null;
 
 const MODEL_NAME = "Xenova/all-MiniLM-L6-v2";
 const EMBEDDING_DIM = 384;
@@ -15,7 +15,7 @@ const EMBEDDING_DIM = 384;
 /**
  * Initialize the embedding pipeline (lazy, called once on first use).
  */
-async function init() {
+async function init(): Promise<void> {
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
@@ -28,8 +28,9 @@ async function init() {
       });
       modelReady = true;
       console.log(`[embedder] Model loaded: ${MODEL_NAME} (${EMBEDDING_DIM}d)`);
-    } catch (err) {
-      console.error(`[embedder] Failed to load model: ${err.message}`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(`[embedder] Failed to load model: ${message}`);
       console.error(`[embedder] Falling back to keyword mode`);
       modelReady = false;
     }
@@ -40,10 +41,10 @@ async function init() {
 
 /**
  * Generate an embedding vector for the given text.
- * Returns a Float32Array of EMBEDDING_DIM dimensions.
+ * Returns an array of EMBEDDING_DIM dimensions.
  * Falls back to a simple hash-based vector if model isn't available.
  */
-async function embed(text) {
+async function embed(text: string): Promise<number[]> {
   await init();
 
   if (modelReady && pipeline) {
@@ -51,7 +52,7 @@ async function embed(text) {
       pooling: "mean",
       normalize: true,
     });
-    return Array.from(output.data);
+    return Array.from(output.data) as number[];
   }
 
   // Fallback: deterministic hash-based pseudo-embedding
@@ -61,7 +62,7 @@ async function embed(text) {
 /**
  * Cosine similarity between two vectors.
  */
-function cosineSimilarity(a, b) {
+function cosineSimilarity(a: number[], b: number[]): number {
   if (a.length !== b.length) return 0;
   let dot = 0,
     magA = 0,
@@ -81,9 +82,9 @@ function cosineSimilarity(a, b) {
  * Fallback: simple hash-based embedding for keyword-level matching.
  * Not truly semantic, but allows the system to function without the model.
  */
-function hashEmbed(text) {
+function hashEmbed(text: string): number[] {
   const dim = EMBEDDING_DIM;
-  const vec = new Array(dim).fill(0);
+  const vec = new Array<number>(dim).fill(0);
   const words = text.toLowerCase().split(/\W+/).filter(Boolean);
 
   for (const word of words) {
@@ -111,7 +112,7 @@ function hashEmbed(text) {
 /**
  * Check if semantic (model-based) embeddings are available.
  */
-function isSemanticReady() {
+function isSemanticReady(): boolean {
   return modelReady;
 }
 

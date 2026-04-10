@@ -180,6 +180,35 @@ curl http://localhost:3100/health
 | `file_store` / `file_read` | Remote file storage |
 
 
+## Architecture
+
+PAR is written in TypeScript with `strict: true` and compiles to ESM. The codebase is organized into 16 focused modules:
+
+```
+mcp/src/
+├── server.ts             # Express + MCP transport (355 lines)
+├── schedulers.ts         # Consolidation, retention, heartbeat timers
+├── seed-defaults.ts      # Default skill templates
+├── types.ts              # 12 domain interfaces
+│
+├── lib/
+│   ├── storage.ts        # JSON I/O, path security, caching
+│   ├── embedder.ts       # ONNX Runtime embedding + cosine similarity
+│   └── knowledge.ts      # KG entity extraction
+│
+└── tools/
+    ├── context.ts        # Shared types (MemoryEntry, loadMemoryIndex)
+    ├── core.ts           # server_status, meta_*, file_*
+    ├── registry.ts       # project/task/snippet/skill/dataset tools
+    ├── memory.ts         # 11 memory tools + timeline
+    ├── knowledge.ts      # 5 KG tools
+    ├── agents.ts         # system_health, consolidate, KG ingest
+    ├── events.ts         # event/workflow tools + changelog
+    └── system.ts         # context_load, file_index, retain, experiment
+```
+
+Tool modules use dependency injection for shared state (memory index getter/setter closures), avoiding global mutable variables. A Proxy wrapper in `server.ts` instruments all tool registrations with call-count telemetry.
+
 ## Autonomous Maintenance
 
 PAR maintains itself:
@@ -259,6 +288,8 @@ Current gaps:
 ## Roadmap
 
 ### Shipped
+- [x] **TypeScript migration** — strict mode, 16 modules, zero compilation errors
+- [x] **Tool modularization** — 55 tools extracted from 3,594-line monolith into 7 focused groups
 - [x] **Discord adapters** — agent fleet connects to team chat via bot framework
 - [x] **Dataset registry** — register, search, and manage training datasets (4 tools)
 - [x] **Experiment tracking** — log ML experiments with built-in experiment-runner skill
