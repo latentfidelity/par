@@ -1,6 +1,6 @@
 /**
  * Memory tools: memory_store, memory_search, memory_search_advanced, memory_log,
- * memory_pin, memory_unpin, memory_tag, memory_stats, memory_timeline
+ * memory_pin, memory_unpin, memory_tag, memory_stats, memory_timeline, memory_audit
  */
 import fs from "fs";
 import path from "path";
@@ -10,6 +10,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, safeId, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
 import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
 import { type MemoryEntry, loadMemoryIndex as _loadIndex } from "./context.js";
+import { runEpistemicAudit, detectConflict } from "../lib/epistemic.js";
 
 export function registerMemoryTools(
   server: McpServer,
@@ -66,7 +67,40 @@ export function registerMemoryTools(
         });
       }
 
-      return textResult({ stored: id, type, project, semantic: isSemanticReady() });
+      // ── Proactive contradiction check (harness engineering pattern) ──
+      // Lightweight: compare against top-5 most similar existing memories
+      // for version/numeric/polarity conflicts. Warns but does not block.
+      const warnings: string[] = [];
+      try {
+        if (!getMemoryIndex()) await loadMemoryIndex();
+        const idx = getMemoryIndex();
+        if (idx && idx.length > 1) {
+          const candidates = idx
+            .filter(m => m.id !== id && (!project || m.project === project))
+            .map(m => ({ ...m, sim: cosineSimilarity(embedding, m.embedding) }))
+            .filter(m => m.sim >= 0.55 && m.sim <= 0.90)
+            .sort((a, b) => b.sim - a.sim)
+            .slice(0, 5);
+
+          for (const candidate of candidates) {
+            const conflict = detectConflict(
+              { content, created: memory.created },
+              { content: candidate.content, created: candidate.created },
+            );
+            if (conflict) {
+              warnings.push(`⚠️ ${conflict} (vs memory ${candidate.id.slice(0, 8)}…, similarity ${Math.round(candidate.sim * 100)}%)`);
+            }
+          }
+        }
+      } catch { /* non-fatal — store succeeds regardless */ }
+
+      return textResult({
+        stored: id,
+        type,
+        project,
+        semantic: isSemanticReady(),
+        ...(warnings.length > 0 ? { epistemic_warnings: warnings } : {}),
+      });
     },
   );
 
@@ -506,6 +540,102 @@ export function registerMemoryTools(
         total: memories.length,
         group_by: groupMode,
         groups,
+      });
+    },
+  );
+
+  // ┌─────────────────────────────────────────────────────────┐
+  // │  EPISTEMIC TRUTH LOOP (v7.1)                             │
+  // └─────────────────────────────────────────────────────────┘
+
+  server.tool(
+    "memory_audit",
+    "Run the epistemic truth loop: scan for contradictions between memories, stale claims superseded by newer data, and orphaned KG entities. Returns structured findings with severity, explanation, and recommended action. Use to maintain knowledge integrity.",
+    {
+      project: z.string().optional().describe("Filter to a specific project (omit for all)"),
+      dry_run: z.boolean().optional().describe("If true, report findings without modifying memories (default: true)"),
+      max_pairs: z.number().optional().describe("Max pairwise comparisons for contradiction scan (default 15000)"),
+    },
+    async ({ project, dry_run, max_pairs }) => {
+      const isDryRun = dry_run !== false; // default true for safety
+      const audit = runEpistemicAudit({ project, maxPairs: max_pairs ?? 15_000 });
+
+      if (!isDryRun && audit.findings.length > 0) {
+        const memDir = path.join(META_DIR, "memory");
+        let tagged = 0, autoArchived = 0;
+
+        for (const finding of audit.findings) {
+          for (const memId of finding.memory_ids) {
+            const memPath = path.join(memDir, `${memId}.json`);
+            const mem = readJSON(memPath);
+            if (!mem || mem.archived || mem.pinned) continue;
+
+            const tag = `epistemic:${finding.severity}`;
+            const existingTags: string[] = mem.tags || [];
+            if (!existingTags.includes(tag)) {
+              mem.tags = [...existingTags, tag];
+              writeJSON(memPath, mem);
+              tagged++;
+            }
+
+            if (finding.action === "archive" && finding.severity === "stale" && !mem.pinned) {
+              mem.archived = true;
+              mem.archived_at = new Date().toISOString();
+              mem.archived_by = "epistemic_audit";
+              writeJSON(memPath, mem);
+              autoArchived++;
+            }
+          }
+        }
+
+        if (autoArchived > 0) setMemoryIndex(null);
+
+        // Emit event
+        const eventId = randomUUID().slice(0, 8);
+        writeJSON(path.join(META_DIR, "events", `${eventId}.json`), {
+          id: eventId, type: "memory.epistemic_audit", source: "memory_audit_tool",
+          project: project || null,
+          payload: { ...audit.summary, tagged, auto_archived: autoArchived, duration_ms: audit.duration_ms },
+          severity: audit.summary.contradictions > 0 ? "warn" : "info",
+          timestamp: new Date().toISOString(),
+          consumed_by: [],
+        });
+
+        return textResult({
+          mode: "executed",
+          ...audit.summary,
+          scanned: audit.scanned,
+          pairs_compared: audit.pairs_compared,
+          tagged,
+          auto_archived: autoArchived,
+          findings: audit.findings.map(f => ({
+            severity: f.severity,
+            explanation: f.explanation,
+            action: f.action,
+            memory_ids: f.memory_ids,
+            ...(f.similarity ? { similarity: f.similarity } : {}),
+            ...(f.superseded_by ? { superseded_by: f.superseded_by } : {}),
+            ...(f.broken_ref ? { broken_ref: f.broken_ref } : {}),
+          })),
+          duration_ms: audit.duration_ms,
+        });
+      }
+
+      return textResult({
+        mode: "dry_run",
+        ...audit.summary,
+        scanned: audit.scanned,
+        pairs_compared: audit.pairs_compared,
+        findings: audit.findings.map(f => ({
+          severity: f.severity,
+          explanation: f.explanation,
+          action: f.action,
+          memory_ids: f.memory_ids,
+          ...(f.similarity ? { similarity: f.similarity } : {}),
+          ...(f.superseded_by ? { superseded_by: f.superseded_by } : {}),
+          ...(f.broken_ref ? { broken_ref: f.broken_ref } : {}),
+        })),
+        duration_ms: audit.duration_ms,
       });
     },
   );

@@ -33,7 +33,7 @@ PAR is a self-hosted MCP server that gives any agent — Claude, Gemini, GPT, or
 │  └───────────┘ └──────────┘ └───────────────────────┘ │
 │                                                        │
 │  Local Embeddings (all-MiniLM-L6-v2) · Zero API cost  │
-│  55 tools · Self-hosted · Zero cloud dependency        │
+│  56 tools · Self-hosted · Zero cloud dependency        │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -48,7 +48,7 @@ PAR is a self-hosted MCP server that gives any agent — Claude, Gemini, GPT, or
 | **Knowledge** | None | Auto-built entity graph with relationships across all memories |
 | **Multi-agent** | Each agent is alone | Shared memory, events, coordinated workflows across agents |
 | **Self-maintaining** | Memories pile up until you hit limits | Auto-consolidation, retention sweep, 15-min heartbeat |
-| **Extensible** | Whatever the vendor ships | 55 tools — add skills, datasets, workflows, event triggers |
+| **Extensible** | Whatever the vendor ships | 56 tools — add skills, datasets, workflows, event triggers |
 
 ## Quick Start
 
@@ -88,7 +88,7 @@ curl http://localhost:3100/health
 # → {"status":"ok","server":"par-mcp","version":"7.0.0",...}
 ```
 
-## Tools (55)
+## Tools (56)
 
 ### Core (2)
 | Tool | Description |
@@ -171,6 +171,11 @@ curl http://localhost:3100/health
 | `dataset_get` | Get dataset details |
 | `dataset_search` | Search by tags |
 
+### Epistemic Integrity (1)
+| Tool | Description |
+|------|-------------|
+| `memory_audit` | Detect contradictions, staleness, and orphaned knowledge — dry_run by default |
+
 ### Infrastructure (5)
 | Tool | Description |
 |------|-------------|
@@ -186,21 +191,22 @@ PAR is written in TypeScript with `strict: true` and compiles to ESM. The codeba
 
 ```
 mcp/src/
-├── server.ts             # Express + MCP transport (355 lines)
+├── server.ts             # Express + MCP transport
 ├── schedulers.ts         # Consolidation, retention, heartbeat timers
 ├── seed-defaults.ts      # Default skill templates
-├── types.ts              # 12 domain interfaces
+├── types.ts              # 14 domain interfaces
 │
 ├── lib/
 │   ├── storage.ts        # JSON I/O, path security, caching
 │   ├── embedder.ts       # ONNX Runtime embedding + cosine similarity
-│   └── knowledge.ts      # KG entity extraction
+│   ├── knowledge.ts      # KG entity extraction
+│   └── epistemic.ts      # Contradiction, staleness, orphan detection
 │
 └── tools/
     ├── context.ts        # Shared types (MemoryEntry, loadMemoryIndex)
     ├── core.ts           # server_status, meta_*, file_*
     ├── registry.ts       # project/task/snippet/skill/dataset tools
-    ├── memory.ts         # 9 memory tools + timeline
+    ├── memory.ts         # 11 memory tools + audit
     ├── knowledge.ts      # 5 KG tools
     ├── agents.ts         # agent fleet, system_health, memory_consolidate
     ├── events.ts         # event/workflow tools + changelog
@@ -216,6 +222,8 @@ PAR maintains itself:
 - **💓 Heartbeat** — emits `system.heartbeat` every 15 minutes with uptime, memory count, heap usage
 - **🌙 Memory Consolidation** — every 6 hours, clusters similar memories and distills them (threshold: 200+ active)
 - **🗑️ Retention Sweep** — every 6 hours, archives memories older than 90 days (protects decisions and handoffs)
+- **🧠 Epistemic Audit** — every 6 hours, scans for semantic contradictions, stale claims, and orphaned knowledge graph entities
+- **⚡ Store-time Warnings** — `memory_store` checks incoming memories against top-5 similar existing memories for version/numeric conflicts
 - **🔔 Event-Driven Workflows** — `deploy.complete` auto-triggers post-deploy QA; `maintenance.requested` triggers memory maintenance
 - **POST /trigger** — HTTP endpoint for cron-based automation (no MCP session needed)
 
@@ -279,9 +287,7 @@ PAR treats memories as **orientation, not gospel**. The agent should always veri
 
 Current gaps:
 
-- **No staleness detection** — if a remembered file gets deleted or refactored, PAR won't flag the drift
 - **No memory versioning** — you can't see how a decision evolved over time
-- **No conflict resolution** — when two memories contradict, the agent must resolve it manually
 - **In-memory index** — the embedding index rebuilds on restart; works fine at thousands of memories, unclear at millions
 - **Single node** — no clustering or replication; designed for a single self-hosted machine
 
@@ -294,10 +300,11 @@ Current gaps:
 - [x] **Dataset registry** — register, search, and manage training datasets (4 tools)
 - [x] **Experiment tracking** — log ML experiments with built-in experiment-runner skill
 - [x] **Snippet versioning** — store, search, and update reusable code/prompt templates (4 tools)
+- [x] **Epistemic integrity** — 3-layer detection engine (contradictions, staleness, KG orphans) with store-time warnings
+- [x] **Staleness detection** — flag memories with outdated version claims or numeric counts superseded by newer data
+- [x] **Conflict detection** — surface contradictory memories before the agent acts on stale context
 
 ### Next
-- [ ] **Staleness detection** — flag memories that reference files changed since the memory was stored
-- [ ] **Conflict detection** — surface contradictory memories before the agent acts on stale context
 - [ ] **Memory versioning** — track how decisions evolve across conversations
 - [ ] **Pluggable embeddings** — swap `all-MiniLM-L6-v2` for larger models when hardware allows
 

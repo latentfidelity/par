@@ -69,8 +69,16 @@ export function registerCoreTools(server: McpServer) {
   );
 
   server.tool("meta_list", "List all keys in meta storage", {}, async () => {
-    const entries = listJSON(path.join(META_DIR, "kv"));
-    const keys = entries.map((e) => ({ key: e.key, updated: e.updated }));
+    const kvDir = path.join(META_DIR, "kv");
+    const files = fs.existsSync(kvDir) ? fs.readdirSync(kvDir).filter(f => f.endsWith(".json")) : [];
+    const keys = files.map((f) => {
+      const entry = readJSON(path.join(kvDir, f));
+      const derivedKey = f.replace(/\.json$/, "").replace(/__/g, "/");
+      return {
+        key: entry?.key || derivedKey,
+        updated: entry?.updated || null,
+      };
+    });
     return textResult(keys.length ? keys : "No keys stored yet.");
   });
 

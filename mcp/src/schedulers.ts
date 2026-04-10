@@ -1,5 +1,5 @@
 /**
- * PAR Schedulers — Background tasks: consolidation, retention sweep, heartbeat.
+ * PAR Schedulers — Background tasks: consolidation, retention sweep, epistemic audit, heartbeat.
  *
  * Each scheduler runs on a fixed interval after boot.
  * They share the module-scoped memoryIndex (set to null to invalidate).
@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import { META_DIR, readJSON, writeJSON, listJSON, errorMessage } from "./lib/storage.js";
 import { embed, cosineSimilarity } from "./lib/embedder.js";
 import { extractKG } from "./lib/knowledge.js";
+import { runEpistemicAudit } from "./lib/epistemic.js";
 
 /** Module-level memoryIndex invalidator — call this from server.ts */
 export type MemoryIndexInvalidator = () => void;
@@ -149,6 +150,65 @@ export function startSchedulers(
     } catch (retErr: unknown) {
       console.error(`🌙 Retention sweep error: ${errorMessage(retErr)}`);
     }
+
+    // ── Epistemic Truth Loop ─────────────────────────────────────
+    try {
+      const memDir = path.join(META_DIR, "memory");
+      const audit = runEpistemicAudit({ maxPairs: 15_000 });
+
+      if (audit.findings.length > 0) {
+        let tagged = 0, autoArchived = 0;
+
+        for (const finding of audit.findings) {
+          for (const memId of finding.memory_ids) {
+            const memPath = path.join(memDir, `${memId}.json`);
+            const mem = readJSON(memPath);
+            if (!mem || mem.archived || mem.pinned) continue;
+
+            const tag = `epistemic:${finding.severity}`;
+            const existingTags: string[] = mem.tags || [];
+            if (!existingTags.includes(tag)) {
+              mem.tags = [...existingTags, tag];
+              writeJSON(memPath, mem);
+              tagged++;
+            }
+
+            // Auto-archive memories with the 'archive' action (≥3 staleness signals)
+            if (finding.action === "archive" && finding.severity === "stale" && !mem.pinned) {
+              mem.archived = true;
+              mem.archived_at = new Date().toISOString();
+              mem.archived_by = "epistemic_audit";
+              writeJSON(memPath, mem);
+              autoArchived++;
+            }
+          }
+        }
+
+        if (autoArchived > 0) invalidateIndex();
+
+        console.log(`🧪 Epistemic audit: ${audit.findings.length} findings (${audit.summary.contradictions} contradictions, ${audit.summary.stale} stale, ${audit.summary.orphans} orphans), tagged ${tagged}, auto-archived ${autoArchived}`);
+
+        const eventId = randomUUID().slice(0, 8);
+        writeJSON(path.join(META_DIR, "events", `${eventId}.json`), {
+          id: eventId, type: "memory.epistemic_audit", source: "scheduler",
+          payload: {
+            scanned: audit.scanned,
+            pairs_compared: audit.pairs_compared,
+            findings: audit.summary,
+            tagged,
+            auto_archived: autoArchived,
+            duration_ms: audit.duration_ms,
+          },
+          severity: audit.summary.contradictions > 0 ? "warn" : "info",
+          timestamp: new Date().toISOString(),
+          consumed_by: [],
+        });
+      } else {
+        console.log(`🧪 Epistemic audit: clean (${audit.scanned} memories, ${audit.pairs_compared} pairs)`);
+      }
+    } catch (epErr: unknown) {
+      console.error(`🧪 Epistemic audit error: ${errorMessage(epErr)}`);
+    }
   }, CONSOLIDATION_INTERVAL_MS);
 
   // ── Heartbeat (every 15 minutes) ─────────────────────────────
@@ -178,7 +238,7 @@ export function startSchedulers(
     }
   }, HEARTBEAT_INTERVAL_MS);
 
-  console.log(`🌙 Consolidation + retention: every 6h (threshold: ${CONSOLIDATION_THRESHOLD} memories, retention: 90 days)`);
+  console.log(`🌙 Consolidation + retention + epistemic audit: every 6h (threshold: ${CONSOLIDATION_THRESHOLD} memories, retention: 90 days)`);
   console.log(`💓 Heartbeat: every 15min`);
 
   return { consolidationTimer, heartbeatTimer };
@@ -225,6 +285,18 @@ export function seedWorkflows() {
         { id: "handoff", name: "Receive Handoff", action: "Check for pending agent_handoff memories" },
       ],
       trigger: { event_type: "agent.onboard" },
+      created: new Date().toISOString(),
+    },
+    {
+      id: "epistemic-audit", name: "Epistemic Truth Audit",
+      description: "Run the epistemic truth loop: scan for contradictions, stale data, and KG orphans",
+      steps: [
+        { id: "audit", name: "Run Epistemic Audit", action: "memory_audit(dry_run=true)" },
+        { id: "review", name: "Review Findings", action: "Check audit findings for contradictions requiring human judgment" },
+        { id: "apply", name: "Apply Corrections", action: "memory_audit(dry_run=false)" },
+        { id: "verify", name: "Verify Cleanup", action: "memory_stats()" },
+      ],
+      trigger: { event_type: "maintenance.requested" },
       created: new Date().toISOString(),
     },
   ];
