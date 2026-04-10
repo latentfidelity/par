@@ -200,11 +200,11 @@ mcp/src/
     ├── context.ts        # Shared types (MemoryEntry, loadMemoryIndex)
     ├── core.ts           # server_status, meta_*, file_*
     ├── registry.ts       # project/task/snippet/skill/dataset tools
-    ├── memory.ts         # 11 memory tools + timeline
+    ├── memory.ts         # 9 memory tools + timeline
     ├── knowledge.ts      # 5 KG tools
-    ├── agents.ts         # system_health, consolidate, KG ingest
+    ├── agents.ts         # agent fleet, system_health, memory_consolidate
     ├── events.ts         # event/workflow tools + changelog
-    └── system.ts         # context_load, file_index, retain, experiment
+    └── system.ts         # context_load, file_index, memory_retain, snippet_update
 ```
 
 Tool modules use dependency injection for shared state (memory index getter/setter closures), avoiding global mutable variables. A Proxy wrapper in `server.ts` instruments all tool registrations with call-count telemetry.

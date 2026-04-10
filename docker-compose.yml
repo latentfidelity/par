@@ -2,6 +2,7 @@ services:
   mcp-gateway:
     build: ./mcp
     restart: unless-stopped
+    env_file: .env
     ports:
       - "${MCP_PORT:-3100}:3100"
     volumes:
