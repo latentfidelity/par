@@ -1,19 +1,17 @@
 /**
- * Knowledge tools: knowledge_extract, knowledge_query, knowledge_context,
+ * Knowledge graph tools: knowledge_context, knowledge_extract, knowledge_query,
  * knowledge_ingest, knowledge_merge
  */
 import fs from "fs";
 import path from "path";
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult, errorMessage } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
 import { extractKG } from "../lib/knowledge.js";
 
 export function registerKnowledgeTools(server: McpServer) {
   // ┌─────────────────────────────────────────────────────────┐
-  // │  KG-POWERED CONTEXT (v6.0)                               │
+  // │  KNOWLEDGE CONTEXT (v6.0)                                │
   // └─────────────────────────────────────────────────────────┘
 
   server.tool(
@@ -94,115 +92,191 @@ export function registerKnowledgeTools(server: McpServer) {
   );
 
   // ┌─────────────────────────────────────────────────────────┐
-  // │  GRAPH MEMORY + CROSS-PROJECT (v3.3)                     │
+  // │  KNOWLEDGE EXTRACTION (v4.0)                             │
   // └─────────────────────────────────────────────────────────┘
 
-  // memory_graph — removed in v6.6 (zero production usage)
-  // memory_xproject — removed in v6.6 (zero production usage)
   server.tool(
-    "agent_register",
-    "Register or update an agent persona. Agents are first-class entities with capabilities, preferences, and interaction history. Use to onboard custom agents.",
+    "knowledge_extract",
+    "Extract entity-relationship triples from text. Entities are typed (person, project, tool, concept, decision, technology), relationships are labeled (uses, depends_on, part_of, created_by, supersedes, etc.). Builds the knowledge graph incrementally.",
     {
-      id: z.string().describe("Unique agent ID (e.g. 'agent-alpha', 'my-bot')"),
-      name: z.string().describe("Human-readable agent name"),
-      role: z.string().describe("Agent role/persona description"),
-      capabilities: z.string().optional().describe("Comma-separated capabilities (e.g. 'code-review,deploy,chat')"),
-      model: z.string().optional().describe("Underlying model (e.g. 'gemini-2.5-pro', 'claude-sonnet')"),
-      channel: z.string().optional().describe("Communication channel (e.g. 'discord', 'mcp', 'cli')"),
-      status: z.enum(["active", "idle", "offline", "maintenance"]).optional().describe("Current agent status"),
-      preferences: z.string().optional().describe("JSON string of agent-specific preferences/config"),
+      text: z.string().describe("Text to extract entities and relationships from"),
+      project: z.string().optional().describe("Project context for disambiguation"),
+      source_id: z.string().optional().describe("Source memory/artifact ID for provenance tracking"),
     },
-    async ({ id, name, role, capabilities, model, channel, status, preferences }) => {
-      const agentPath = path.join(META_DIR, "agents", `${id}.json`);
-      const existing = readJSON(agentPath);
-
-      const agent = {
-        id,
-        name,
-        role,
-        capabilities: capabilities ? capabilities.split(",").map(c => c.trim()) : existing?.capabilities || [],
-        model: model || existing?.model || null,
-        channel: channel || existing?.channel || null,
-        status: status || existing?.status || "active",
-        preferences: preferences ? JSON.parse(preferences) : existing?.preferences || {},
-        stats: existing?.stats || { messages_sent: 0, tasks_completed: 0, last_active: null },
-        created: existing?.created || new Date().toISOString(),
-        updated: new Date().toISOString(),
-      };
-
-      writeJSON(agentPath, agent);
-      return textResult({ registered: id, name, status: agent.status, capabilities: agent.capabilities });
-    },
-  );
-
-  server.tool(
-    "agent_list",
-    "List all registered agents with their status and capabilities",
-    {
-      status: z.enum(["active", "idle", "offline", "maintenance", "all"]).optional().describe("Filter by status (default: all)"),
-    },
-    async ({ status }) => {
-      const agents = listJSON(path.join(META_DIR, "agents"));
-      const filtered = (!status || status === "all") ? agents : agents.filter(a => a.status === status);
+    async ({ text, project, source_id }) => {
+      const result = extractKG(text, project, source_id);
       return textResult({
-        total: filtered.length,
-        agents: filtered.map(a => ({
-          id: a.id,
-          name: a.name,
-          role: a.role.slice(0, 100),
-          status: a.status,
-          capabilities: a.capabilities,
-          model: a.model,
-          channel: a.channel,
-          last_active: a.stats?.last_active,
-        })),
+        entities_found: result.entities.length,
+        relationships_found: result.relationships.length,
+        entities: result.entities,
+        relationships: result.relationships.map(r => `${r.from} --[${r.type}]--> ${r.to}`),
       });
     },
   );
 
+  // ┌─────────────────────────────────────────────────────────┐
+  // │  KNOWLEDGE QUERY (v4.0)                                  │
+  // └─────────────────────────────────────────────────────────┘
+
   server.tool(
-    "agent_get",
-    "Get full details of a registered agent including preferences and stats",
+    "knowledge_query",
+    "Query the knowledge graph. Look up an entity and discover all its relationships, or explore the neighborhood by walking N hops out.",
     {
-      id: z.string().describe("Agent identifier"),
+      entity: z.string().describe("Entity ID to look up"),
+      hops: z.number().optional().describe("Number of relationship hops to traverse (default 1, max 3)"),
+      relationship_type: z.string().optional().describe("Filter by relationship type (e.g. 'uses', 'depends_on')"),
     },
-    async ({ id }) => {
-      const agent = readJSON(path.join(META_DIR, "agents", `${id}.json`));
-      if (!agent) return errorResult(`Agent not found: ${id}`);
-      return textResult(agent);
+    async ({ entity, hops, relationship_type }) => {
+      const maxHops = Math.min(hops || 1, 3);
+      const kgDir = path.join(META_DIR, "knowledge");
+      const allFiles = fs.existsSync(kgDir) ? fs.readdirSync(kgDir) : [];
+
+      // Load entity
+      const entityFile = allFiles.find(f => f === `entity__${entity.replace(/[^a-zA-Z0-9]/g, "_")}.json`);
+      const entityData = entityFile ? readJSON(path.join(kgDir, entityFile)) : null;
+
+      // Load all relationships
+      const allRels = allFiles
+        .filter(f => f.startsWith("rel__"))
+        .map(f => readJSON(path.join(kgDir, f)))
+        .filter(Boolean);
+
+      // BFS from entity
+      const visited = new Set([entity]);
+      const graph = { center: entityData || { id: entity, type: "unknown" }, nodes: [] as any[], edges: [] as any[] };
+      let frontier = [entity];
+
+      for (let hop = 0; hop < maxHops; hop++) {
+        const nextFrontier = [];
+        for (const current of frontier) {
+          const connected = allRels.filter(r => {
+            const matches = r.from === current || r.to === current;
+            if (!matches) return false;
+            if (relationship_type) return r.type === relationship_type;
+            return true;
+          });
+
+          for (const rel of connected) {
+            graph.edges.push({
+              from: rel.from,
+              to: rel.to,
+              type: rel.type,
+              weight: rel.weight,
+            });
+
+            const neighbor = rel.from === current ? rel.to : rel.from;
+            if (!visited.has(neighbor)) {
+              visited.add(neighbor);
+              nextFrontier.push(neighbor);
+
+              // Load neighbor entity data
+              const neighborFile = allFiles.find(f => f === `entity__${neighbor.replace(/[^a-zA-Z0-9]/g, "_")}.json`);
+              const neighborData = neighborFile ? readJSON(path.join(kgDir, neighborFile)) : { id: neighbor, type: "unknown" };
+              graph.nodes.push({ ...neighborData, hop: hop + 1 });
+            }
+          }
+        }
+        frontier = nextFrontier;
+      }
+
+      return textResult({
+        entity,
+        hops: maxHops,
+        connected_entities: graph.nodes.length,
+        relationships: graph.edges.length,
+        graph,
+      });
     },
   );
 
+  // ┌─────────────────────────────────────────────────────────┐
+  // │  KNOWLEDGE INGEST (v4.0)                                 │
+  // └─────────────────────────────────────────────────────────┘
+
   server.tool(
-    "agent_update",
-    "Update an agent's status, stats, or preferences. Use to track activity and manage agent lifecycle.",
+    "knowledge_ingest",
+    "Bulk-process project memories to build the knowledge graph. Extracts entities and relationships from all memories for a project. Run this once to bootstrap the graph, then rely on incremental knowledge_extract calls.",
     {
-      id: z.string().describe("Agent identifier"),
-      status: z.enum(["active", "idle", "offline", "maintenance"]).optional().describe("New status"),
-      increment_messages: z.boolean().optional().describe("Increment message count"),
-      increment_tasks: z.boolean().optional().describe("Increment completed task count"),
-      preferences: z.string().optional().describe("JSON string of updated preferences (merged)"),
+      project: z.string().describe("Project to ingest memories from"),
+      limit: z.number().optional().describe("Max memories to process (default 50)"),
     },
-    async ({ id, status, increment_messages, increment_tasks, preferences }) => {
-      const agentPath = path.join(META_DIR, "agents", `${id}.json`);
-      const agent = readJSON(agentPath);
-      if (!agent) return errorResult(`Agent not found: ${id}`);
+    async ({ project, limit }) => {
+      const maxMems = Math.min(limit || 50, 200);
+      const memDir = path.join(META_DIR, "memory");
+      const memories = listJSON(memDir)
+        .filter(m => m.project === project && !m.archived)
+        .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+        .slice(0, maxMems);
 
-      if (status) agent.status = status;
-      if (increment_messages) {
-        agent.stats.messages_sent = (agent.stats.messages_sent || 0) + 1;
-        agent.stats.last_active = new Date().toISOString();
-      }
-      if (increment_tasks) {
-        agent.stats.tasks_completed = (agent.stats.tasks_completed || 0) + 1;
-      }
-      if (preferences) {
-        agent.preferences = { ...agent.preferences, ...JSON.parse(preferences) };
-      }
-      agent.updated = new Date().toISOString();
+      let totalEntities = 0, totalRelationships = 0;
+      const kgDir = path.join(META_DIR, "knowledge");
+      const allProjects = listJSON(path.join(META_DIR, "projects"));
 
-      writeJSON(agentPath, agent);
-      return textResult({ updated: id, status: agent.status, stats: agent.stats });
+      const toolPattern = /\b(memory_\w+|artifact_\w+|context_\w+|project_\w+|task_\w+|snippet_\w+|skill_\w+|dataset_\w+|event_\w+|workflow_\w+|agent_\w+|file_\w+|meta_\w+|procedure_\w+|knowledge_\w+|system_health|experiment_log|ping|server_status)\b/g;
+      const techTerms = ["docker", "node", "javascript", "python", "d3", "mcp", "discord", "gemini", "claude", "pillow", "numpy", "react", "vite", "tailwind", "minilm", "onnx"];
+
+      for (const mem of memories) {
+        const entities = new Map();
+        const text = mem.content;
+
+        // Projects
+        for (const proj of allProjects) {
+          if (text.toLowerCase().includes(proj.id.toLowerCase())) {
+            entities.set(proj.id, { id: proj.id, name: proj.name, type: "project" });
+          }
+        }
+        // Tools
+        let match;
+        const tp = new RegExp(toolPattern.source, toolPattern.flags);
+        while ((match = tp.exec(text)) !== null) {
+          entities.set(match[1], { id: match[1], name: match[1], type: "tool" });
+        }
+        // Tech
+        for (const tech of techTerms) {
+          if (text.toLowerCase().includes(tech)) {
+            entities.set(tech, { id: tech, name: tech, type: "technology" });
+          }
+        }
+
+        // Persist
+        for (const entity of entities.values()) {
+          const entityPath = path.join(kgDir, `entity__${entity.id.replace(/[^a-zA-Z0-9]/g, "_")}.json`);
+          const existing = readJSON(entityPath);
+          if (existing) {
+            existing.mentions = (existing.mentions || 0) + 1;
+            existing.last_seen = new Date().toISOString();
+            writeJSON(entityPath, existing);
+          } else {
+            writeJSON(entityPath, { ...entity, project, mentions: 1, sources: [mem.id], created: new Date().toISOString(), last_seen: new Date().toISOString() });
+          }
+          totalEntities++;
+        }
+
+        // Co-occurrence relationships
+        const entityList = [...entities.values()];
+        for (let i = 0; i < entityList.length; i++) {
+          for (let j = i + 1; j < entityList.length; j++) {
+            const relId = `${entityList[i].id}__related_to__${entityList[j].id}`.replace(/[^a-zA-Z0-9_]/g, "_");
+            const relPath = path.join(kgDir, `rel__${relId}.json`);
+            const existing = readJSON(relPath);
+            if (existing) {
+              existing.weight = (existing.weight || 1) + 1;
+              writeJSON(relPath, existing);
+            } else {
+              writeJSON(relPath, { id: relId, from: entityList[i].id, to: entityList[j].id, type: "related_to", weight: 1, created: new Date().toISOString(), last_seen: new Date().toISOString() });
+            }
+            totalRelationships++;
+          }
+        }
+      }
+
+      return textResult({
+        project,
+        memories_processed: memories.length,
+        entities_extracted: totalEntities,
+        relationships_found: totalRelationships,
+        message: `Knowledge graph built from ${memories.length} memories`,
+      });
     },
   );
 
