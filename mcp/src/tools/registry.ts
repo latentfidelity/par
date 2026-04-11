@@ -658,6 +658,210 @@ export function registerRegistryTools(server: McpServer) {
     },
   );
 
+  // ┌─────────────────────────────────────────────────────────┐
+  // │  SKILL ENRICHMENT (server-side analysis)                 │
+  // └─────────────────────────────────────────────────────────┘
+
+  server.tool(
+    "skill_enrich",
+    "Analyze a skill's source code and generate an enriched SKILL.md. Reads references/source.md, extracts dependencies, configurable properties, mount pattern, and key APIs. Writes the enriched SKILL.md in place. Use to batch-upgrade thin skills without reading source yourself.",
+    {
+      id: z.string().describe("Skill ID (directory name, e.g. 'effect-webgl-smoke')"),
+      description: z.string().optional().describe("Optional one-line description override (default: auto-generated from analysis)"),
+      dry_run: z.boolean().optional().describe("If true, return the analysis without writing SKILL.md"),
+    },
+    async ({ id, description: descOverride, dry_run }) => {
+      // Locate skill in library
+      const SKILLS_DIR = process.env.SKILLS_DIR || "/data/skills";
+      const skillDir = path.join(SKILLS_DIR, id);
+      if (!fs.existsSync(skillDir)) return errorResult(`Skill not found: ${id} (checked ${SKILLS_DIR})`);
+
+      // Read source
+      const sourcePath = path.join(skillDir, "references", "source.md");
+      if (!fs.existsSync(sourcePath)) return errorResult(`No source.md found for ${id}`);
+      const source = fs.readFileSync(sourcePath, "utf-8");
+      const lines = source.split("\n");
+
+      // ── Extract CDN dependencies ──
+      const cdnPattern = /(?:src|href)=["']?(https?:\/\/[^"'\s>]+(?:\.js|\.css|\.min\.js|\.min\.css)[^"'\s>]*)["']?/gi;
+      const cdns: string[] = [];
+      let m;
+      while ((m = cdnPattern.exec(source)) !== null) {
+        const url = m[1];
+        if (!cdns.includes(url) && !url.includes("codepenassets") && !url.includes("normalize")) {
+          cdns.push(url);
+        }
+      }
+
+      // ── Extract CSS custom properties ──
+      const cssVarPattern = /--([a-zA-Z0-9-]+)\s*:\s*([^;]+);/g;
+      const cssVars: { name: string; default_value: string }[] = [];
+      while ((m = cssVarPattern.exec(source)) !== null) {
+        if (cssVars.length < 15) cssVars.push({ name: `--${m[1]}`, default_value: m[2].trim() });
+      }
+
+      // ── Extract key JS patterns ──
+      const jsPatterns: string[] = [];
+      const canvasMatch = source.match(/getContext\(['"]([^'"]+)['"]\)/);
+      if (canvasMatch) jsPatterns.push(`Canvas ${canvasMatch[1]}`);
+      if (/requestAnimationFrame/i.test(source)) jsPatterns.push("Animation loop (rAF)");
+      if (/addEventListener/i.test(source)) jsPatterns.push("Event listeners");
+      if (/class\s+\w+/i.test(source)) jsPatterns.push("Class-based");
+      if (/new THREE\./i.test(source)) jsPatterns.push("Three.js scene");
+      if (/gl_FragColor|precision\s+\w+\s+float/i.test(source)) jsPatterns.push("GLSL shaders");
+      if (/gsap\./i.test(source)) jsPatterns.push("GSAP animations");
+      if (/IntersectionObserver/i.test(source)) jsPatterns.push("Scroll detection");
+      if (/fetch\(|XMLHttpRequest/i.test(source)) jsPatterns.push("Network requests");
+      if (/ResizeObserver/i.test(source)) jsPatterns.push("Responsive resize");
+
+      // ── Detect tech stack (reuse ingestion patterns) ──
+      const techPatterns: [RegExp, string][] = [
+        [/THREE\.|three\.js|from\s+['"]three['"]/i, "three-js"],
+        [/gl\.create|WebGLRenderingContext|getContext\(['"]webgl/i, "webgl"],
+        [/gl_FragColor|precision\s+\w+\s+float/i, "glsl"],
+        [/gsap\.|ScrollTrigger/i, "gsap"],
+        [/canvas\.getContext\(['"]2d['"]\)/i, "canvas-2d"],
+        [/@keyframes/i, "css-animation"],
+        [/backdrop-filter/i, "backdrop-filter"],
+        [/<svg|SVGElement/i, "svg"],
+        [/AudioContext|Web Audio/i, "web-audio"],
+        [/React\.|createElement|useState/i, "react"],
+      ];
+      const tech: string[] = [];
+      for (const [rx, tag] of techPatterns) {
+        if (rx.test(source) && !tech.includes(tag)) tech.push(tag);
+      }
+
+      // ── Extract mount pattern (first HTML body content, simplified) ──
+      const htmlMatch = source.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      let mountSnippet = "";
+      if (htmlMatch) {
+        const body = htmlMatch[1]
+          .replace(/<script[\s\S]*?<\/script>/gi, "")
+          .replace(/<link[^>]*>/gi, "")
+          .trim();
+        const bodyLines = body.split("\n").map(l => l.trim()).filter(Boolean);
+        mountSnippet = bodyLines.slice(0, 15).join("\n");
+      }
+
+      // ── Compute complexity ──
+      const totalLines = lines.length;
+      const complexity = totalLines < 100 ? "light" : totalLines < 500 ? "medium" : "heavy";
+
+      // ── Determine category from name ──
+      const category = id.startsWith("effect-") ? "effect"
+        : id.startsWith("component-") ? "component"
+        : id.startsWith("template-") ? "template"
+        : id.startsWith("tool-") ? "tool"
+        : id.startsWith("script-") ? "script"
+        : "effect";
+
+      // ── Build description ──
+      const techList = tech.length > 0 ? tech.join(", ") : "HTML, CSS, JS";
+      const autoDesc = descOverride || `${id.replace(/^(effect|component|template|tool|script)-/, "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}. Built with ${techList}.`;
+
+      // ── Read existing quality block if present ──
+      const existingSkill = fs.readFileSync(path.join(skillDir, "SKILL.md"), "utf-8");
+      const qualityMatch = existingSkill.match(/quality:\n([\s\S]*?)---/);
+      let qualityBlock = "";
+      if (qualityMatch) qualityBlock = `quality:\n${qualityMatch[1]}`;
+
+      // ── Generate enriched SKILL.md ──
+      const enriched = [
+        `---`,
+        `name: ${id}`,
+        `description: "${autoDesc}"`,
+        ...(qualityBlock ? [qualityBlock.trim()] : []),
+        `---`,
+        ``,
+        `# ${id.replace(/^(effect|component|template|tool|script)-/, "").replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase())}`,
+        ``,
+        autoDesc,
+        ``,
+        `## When to Use`,
+        ``,
+        `- ${category === "effect" ? "Background animation or visual accent" : category === "component" ? "Interactive UI element" : category === "template" ? "Full page layout" : "Utility or tool"}`,
+        `- Projects requiring ${techList}`,
+        `- ${complexity === "light" ? "Quick integration, minimal overhead" : complexity === "medium" ? "Feature-level integration" : "Full-page or complex integration"}`,
+        ``,
+        `## Core Technique`,
+        ``,
+        ...(jsPatterns.length > 0 ? [`Uses ${jsPatterns.slice(0, 3).join(", ")}. ${complexity === "heavy" ? "Complex multi-system implementation." : "Straightforward implementation pattern."}`] : [`Standard ${techList} implementation.`]),
+        ``,
+        ...(jsPatterns.length > 0 ? [
+          `### Key APIs`,
+          ``,
+          `| API/Pattern | Purpose |`,
+          `|---|---|`,
+          ...jsPatterns.slice(0, 8).map(p => `| ${p} | Core mechanism |`),
+          ``,
+        ] : []),
+        ...(mountSnippet ? [
+          `## Mount Pattern`,
+          ``,
+          "```html",
+          mountSnippet,
+          "```",
+          ``,
+        ] : []),
+        ...(cssVars.length > 0 ? [
+          `## Customization`,
+          ``,
+          `| Property | Default | Description |`,
+          `|---|---|---|`,
+          ...cssVars.slice(0, 10).map(v => `| \`${v.name}\` | \`${v.default_value}\` | CSS custom property |`),
+          ``,
+        ] : []),
+        `## Dependencies`,
+        ``,
+        ...(cdns.length > 0 ? cdns.map(u => `- ${u}`) : [`- None (vanilla ${techList})`]),
+        ``,
+        `## Metrics`,
+        ``,
+        `- **Lines:** ${totalLines}`,
+        `- **Complexity:** ${complexity}`,
+        `- **Tech:** ${techList}`,
+        ``,
+        `## Source Reference`,
+        ``,
+        `See \`references/source.md\` for the complete original implementation.`,
+      ].join("\n");
+
+      if (dry_run) {
+        return textResult({
+          id,
+          analysis: {
+            tech,
+            complexity,
+            total_lines: totalLines,
+            dependencies: cdns,
+            css_vars: cssVars.length,
+            js_patterns: jsPatterns,
+            mount_pattern: mountSnippet ? "extracted" : "none",
+            category,
+          },
+          preview_lines: enriched.split("\n").length,
+        });
+      }
+
+      // Write enriched SKILL.md
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), enriched);
+
+      return textResult({
+        id,
+        enriched: true,
+        lines_before: existingSkill.split("\n").length,
+        lines_after: enriched.split("\n").length,
+        tech,
+        complexity,
+        dependencies: cdns.length,
+        css_vars: cssVars.length,
+        js_patterns: jsPatterns.length,
+        mount_pattern: mountSnippet ? true : false,
+      });
+    },
+  );
+
 
   // ┌─────────────────────────────────────────────────────────┐
   // │  DATASET REGISTRY                                       │
