@@ -382,25 +382,25 @@ export function registerRegistryTools(server: McpServer) {
   // └─────────────────────────────────────────────────────────┘
 
   server.tool(
-    "web_skill_ingest",
-    "Ingest raw web front-end source (HTML/CSS/JS) into the skill library. Auto-detects web tech stack (Three.js, WebGL, GLSL, GSAP, etc.), computes complexity, checks for duplicates via embedding similarity, classifies into effect/component/template/tool, and writes a structured SKILL.md + source.md.",
+    "skill_ingest",
+    "Ingest source code into the skill library. Accepts any language — HTML/CSS/JS, Python, shell scripts, config files, etc. Auto-detects tech stack, computes complexity, checks for duplicates via embedding similarity, classifies into category, and writes a structured SKILL.md + source.md.",
     {
-      name: z.string().describe("Kebab-case skill name (e.g. 'liquid-metal-button')"),
-      html: z.string().optional().describe("HTML source code"),
-      css: z.string().optional().describe("CSS source code"),
-      js: z.string().optional().describe("JavaScript source code"),
-      source_url: z.string().optional().describe("Original source URL (e.g. CodePen link)"),
-      category: z.enum(["effect", "component", "template", "tool"]).optional()
+      name: z.string().describe("Kebab-case skill name (e.g. 'liquid-metal-button', 'csv-parser', 'docker-healthcheck')"),
+      sources: z.record(z.string()).describe("Source code keyed by language/file type. E.g. {\"html\": \"...\", \"css\": \"...\", \"js\": \"...\"} or {\"python\": \"...\", \"bash\": \"...\", \"yaml\": \"...\"}"),
+      source_url: z.string().optional().describe("Original source URL (e.g. CodePen link, GitHub gist, blog post)"),
+      category: z.enum(["effect", "component", "template", "tool", "script", "pipeline", "config"]).optional()
         .describe("Override auto-classification (default: auto-detect from code)"),
       duplicate_threshold: z.number().optional()
         .describe("Cosine similarity threshold for duplicate detection (default 0.85)"),
     },
-    async ({ name, html, css, js, source_url, category, duplicate_threshold }) => {
-      const allSource = [html || "", css || "", js || ""].join("\n");
-      if (!allSource.trim()) return errorResult("At least one of html, css, or js is required.");
+    async ({ name, sources, source_url, category, duplicate_threshold }) => {
+      const allSource = Object.values(sources).join("\n");
+      if (!allSource.trim()) return errorResult("Sources object is empty — provide at least one language key with code.");
+      const sourceKeys = Object.keys(sources);
 
-      // ── Tech stack detection (regex-based, no AI needed) ──
+      // ── Tech stack detection (multi-domain, regex-based) ──
       const techPatterns: Array<[RegExp, string]> = [
+        // Web / front-end
         [/THREE\.|three\.js|three\.module/i, "three-js"],
         [/gl\.create|WebGLRenderingContext|getContext\(['"]webgl/i, "webgl"],
         [/gl_FragColor|gl_Position|precision\s+(high|medium|low)p/i, "glsl"],
@@ -414,15 +414,42 @@ export function registerRegistryTools(server: McpServer) {
         [/CSS\.registerProperty/i, "css-houdini"],
         [/import\s.*from\s+['"]react/i, "react"],
         [/ShaderMaterial|RawShaderMaterial/i, "three-shader"],
-        [/paper-design\/shaders/i, "paper-shaders"],
         [/requestAnimationFrame/i, "animation-loop"],
+        // Python
+        [/import\s+(torch|tensorflow|keras)/i, "ml-framework"],
+        [/import\s+(pandas|numpy|scipy)/i, "data-science"],
+        [/import\s+(flask|fastapi|django)/i, "python-web"],
+        [/import\s+(PIL|pillow|cv2)/i, "image-processing"],
+        [/import\s+(asyncio|aiohttp)/i, "async-python"],
+        [/def\s+\w+|class\s+\w+/i, "python"],
+        // Shell / DevOps
+        [/docker\s+(compose|build|run)|Dockerfile/i, "docker"],
+        [/kubectl|helm\s+/i, "kubernetes"],
+        [/rsync|scp|ssh\s+/i, "remote-ops"],
+        [/cron|crontab|systemctl/i, "system-admin"],
+        [/#!\/bin\/(ba)?sh|#!\/usr\/bin\/env\s+bash/i, "bash"],
+        // Rust / Go / Systems
+        [/fn\s+\w+|impl\s+\w+|use\s+std::/i, "rust"],
+        [/func\s+\w+|package\s+main|import\s+\(/i, "go"],
+        // Config / Data
+        [/apiVersion:|kind:\s+Deployment/i, "kubernetes-manifest"],
+        [/\[tool\.poetry\]|\[project\]/i, "pyproject"],
+        [/version:\s+['"]?\d+\.\d+/i, "config"],
       ];
 
       const detectedTech: string[] = [];
       for (const [pattern, tag] of techPatterns) {
         if (pattern.test(allSource)) detectedTech.push(tag);
       }
-      if (!js?.trim() && !allSource.match(/<script/i)) detectedTech.push("css-only");
+
+      // Detect primary domain from source keys
+      const hasWeb = sourceKeys.some(k => ["html", "css", "js", "javascript", "tsx", "jsx"].includes(k.toLowerCase()));
+      const hasPython = sourceKeys.some(k => ["python", "py"].includes(k.toLowerCase()));
+      const hasShell = sourceKeys.some(k => ["bash", "sh", "shell", "zsh"].includes(k.toLowerCase()));
+
+      if (hasWeb && !sources.js?.trim() && !allSource.match(/<script/i)) detectedTech.push("css-only");
+      if (hasPython) detectedTech.push("python");
+      if (hasShell) detectedTech.push("shell");
 
       // ── Complexity computation ──
       const totalLines = allSource.split("\n").length;
@@ -431,14 +458,20 @@ export function registerRegistryTools(server: McpServer) {
       // ── Auto-classification ──
       let finalCategory = category;
       if (!finalCategory) {
-        if (detectedTech.some(t => ["webgl", "glsl", "three-js", "gsap", "canvas-2d", "css-animation", "three-shader"].includes(t))) {
+        if (hasShell || detectedTech.includes("bash") || detectedTech.includes("docker")) {
+          finalCategory = "script";
+        } else if (detectedTech.includes("ml-framework") || detectedTech.includes("data-science")) {
+          finalCategory = "pipeline";
+        } else if (detectedTech.some(t => ["kubernetes-manifest", "pyproject", "config"].includes(t))) {
+          finalCategory = "config";
+        } else if (detectedTech.some(t => ["webgl", "glsl", "three-js", "gsap", "canvas-2d", "css-animation", "three-shader"].includes(t))) {
           finalCategory = "effect";
-        } else if (/<(form|button|input|select|nav|card|modal|tooltip)/i.test(html || "")) {
+        } else if (hasWeb && /<(form|button|input|select|nav|card|modal|tooltip)/i.test(sources.html || "")) {
           finalCategory = "component";
-        } else if (/<(header|main|footer|section|article)/i.test(html || "") && totalLines > 200) {
+        } else if (hasWeb && /<(header|main|footer|section|article)/i.test(sources.html || "") && totalLines > 200) {
           finalCategory = "template";
         } else {
-          finalCategory = "effect"; // default
+          finalCategory = "tool";
         }
       }
 
@@ -453,7 +486,6 @@ export function registerRegistryTools(server: McpServer) {
         const { embed: embedFn, cosineSimilarity: cosSim } = await import("../lib/embedder.js");
         const newVec = await embedFn(description);
 
-        // Scan existing skills in the memory store
         const skillsDir = path.join(META_DIR, "skills");
         const existingSkills = listJSON(skillsDir);
         let maxSim = 0;
@@ -462,18 +494,11 @@ export function registerRegistryTools(server: McpServer) {
         for (const skill of existingSkills) {
           if (skill.embedding) {
             const sim = cosSim(newVec, skill.embedding);
-            if (sim > maxSim) {
-              maxSim = sim;
-              mostSimilar = skill.id;
-            }
+            if (sim > maxSim) { maxSim = sim; mostSimilar = skill.id; }
           } else if (skill.description) {
-            // Compute similarity on-the-fly for skills without embeddings
             const skillVec = await embedFn(skill.description);
             const sim = cosSim(newVec, skillVec);
-            if (sim > maxSim) {
-              maxSim = sim;
-              mostSimilar = skill.id;
-            }
+            if (sim > maxSim) { maxSim = sim; mostSimilar = skill.id; }
           }
         }
 
@@ -485,14 +510,12 @@ export function registerRegistryTools(server: McpServer) {
       }
 
       // ── Write skill directory ──
-      // Determine library root — check for the expected location inside the engram project
       const libRoots = [
-        path.join(META_DIR, "..", ".agents", "skills", "library"),   // /opt/engram/.agents/skills/library
+        path.join(META_DIR, "..", ".agents", "skills", "library"),
         path.join(META_DIR, "..", "agents", "skills", "library"),
       ];
       let libRoot = libRoots.find(p => fs.existsSync(p));
       if (!libRoot) {
-        // Create it at the first candidate
         libRoot = libRoots[0];
         fs.mkdirSync(libRoot, { recursive: true });
       }
@@ -501,23 +524,26 @@ export function registerRegistryTools(server: McpServer) {
       const refsDir = path.join(skillDir, "references");
       fs.mkdirSync(refsDir, { recursive: true });
 
-      // Write source.md
+      // Write source.md — generic, keyed by language
       const sourceParts: string[] = [`# Source: ${name}\n<!-- Source: ${source_url || "manual"} -->\n`];
-      if (html?.trim()) sourceParts.push(`## HTML\n\`\`\`html\n${html.trim()}\n\`\`\`\n`);
-      if (css?.trim()) sourceParts.push(`## CSS\n\`\`\`css\n${css.trim()}\n\`\`\`\n`);
-      if (js?.trim()) sourceParts.push(`## JavaScript\n\`\`\`javascript\n${js.trim()}\n\`\`\`\n`);
+      for (const [lang, code] of Object.entries(sources)) {
+        if (code.trim()) {
+          sourceParts.push(`## ${lang.charAt(0).toUpperCase() + lang.slice(1)}\n\`\`\`${lang}\n${code.trim()}\n\`\`\`\n`);
+        }
+      }
       fs.writeFileSync(path.join(refsDir, "source.md"), sourceParts.join("\n"));
 
-      // Write stub SKILL.md (agent will enrich this)
+      // Write stub SKILL.md
+      const techList = detectedTech.join(", ") || sourceKeys.join(", ");
       const skillMd = [
         "---",
         `name: ${skillId}`,
-        `description: "${skillId}. Built with ${detectedTech.join(", ") || "HTML, CSS, JS"}."`,
+        `description: "${skillId}. Built with ${techList}."`,
         "quality:",
         "  self_contained: 0",
         "  code_clarity: 0",
         "  reusability: 0",
-        "  visual_impact: 0",
+        "  effectiveness: 0",
         "  novelty: 0",
         "  total: 0/25",
         "---",
@@ -525,7 +551,7 @@ export function registerRegistryTools(server: McpServer) {
         `# ${name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}`,
         "",
         `## Technologies`,
-        detectedTech.join(", ") || "HTML, CSS, JavaScript",
+        techList,
         "",
         `## Complexity`,
         `${complexity} (${totalLines} lines)`,
@@ -554,29 +580,31 @@ export function registerRegistryTools(server: McpServer) {
       return textResult({
         id: skillId,
         category: finalCategory,
+        domain: hasWeb ? "web" : hasPython ? "python" : hasShell ? "shell" : "general",
         tech: detectedTech,
         complexity,
         total_lines: totalLines,
+        source_languages: sourceKeys,
         path: skillDir,
         duplicate_warning: duplicateWarning,
-        status: "ingested — SKILL.md needs enrichment (run web_skill_score then add description/customization)",
+        status: "ingested — SKILL.md needs enrichment (run skill_score then add description/customization)",
       });
     },
   );
 
   server.tool(
-    "web_skill_score",
-    "Score a web front-end skill on the 5-dimension quality rubric (self_contained, code_clarity, reusability, visual_impact, novelty). Updates the quality block in SKILL.md frontmatter and the registry entry.",
+    "skill_score",
+    "Score any skill on the 5-dimension quality rubric. Updates the quality block in SKILL.md frontmatter and the registry entry. Gate: 15/25 minimum to accept.",
     {
-      id: z.string().describe("Skill ID (e.g. 'effect-liquid-metal-button')"),
-      self_contained: z.number().min(1).max(5).describe("1-5: Does it run standalone without npm install?"),
+      id: z.string().describe("Skill ID (e.g. 'effect-liquid-metal-button', 'script-docker-healthcheck')"),
+      self_contained: z.number().min(1).max(5).describe("1-5: Does it run standalone with minimal setup?"),
       code_clarity: z.number().min(1).max(5).describe("1-5: Is the code readable and well-structured?"),
       reusability: z.number().min(1).max(5).describe("1-5: Can it be dropped into another project easily?"),
-      visual_impact: z.number().min(1).max(5).describe("1-5: How impressive does it look?"),
+      effectiveness: z.number().min(1).max(5).describe("1-5: How well does it accomplish its purpose?"),
       novelty: z.number().min(1).max(5).describe("1-5: Is this a unique pattern in the library?"),
     },
-    async ({ id, self_contained, code_clarity, reusability, visual_impact, novelty }) => {
-      const total = self_contained + code_clarity + reusability + visual_impact + novelty;
+    async ({ id, self_contained, code_clarity, reusability, effectiveness, novelty }) => {
+      const total = self_contained + code_clarity + reusability + effectiveness + novelty;
       const passed = total >= 15;
 
       // Update SKILL.md if it exists
@@ -590,13 +618,12 @@ export function registerRegistryTools(server: McpServer) {
         const skillMdPath = path.join(libRoot, id, "SKILL.md");
         if (fs.existsSync(skillMdPath)) {
           let content = fs.readFileSync(skillMdPath, "utf-8");
-          // Replace quality block in frontmatter
           const qualityBlock = [
             "quality:",
             `  self_contained: ${self_contained}`,
             `  code_clarity: ${code_clarity}`,
             `  reusability: ${reusability}`,
-            `  visual_impact: ${visual_impact}`,
+            `  effectiveness: ${effectiveness}`,
             `  novelty: ${novelty}`,
             `  total: ${total}/25`,
           ].join("\n");
@@ -607,7 +634,6 @@ export function registerRegistryTools(server: McpServer) {
               qualityBlock,
             );
           } else {
-            // Insert before closing ---
             content = content.replace(/^---\s*$/m, `${qualityBlock}\n---`);
           }
           fs.writeFileSync(skillMdPath, content);
@@ -618,19 +644,20 @@ export function registerRegistryTools(server: McpServer) {
       const registryPath = path.join(META_DIR, "skills", `${id}.json`);
       const existing = readJSON(registryPath);
       if (existing) {
-        existing.quality = { self_contained, code_clarity, reusability, visual_impact, novelty, total };
+        existing.quality = { self_contained, code_clarity, reusability, effectiveness, novelty, total };
         existing.updated = new Date().toISOString();
         writeJSON(registryPath, existing);
       }
 
       return textResult({
         id,
-        quality: { self_contained, code_clarity, reusability, visual_impact, novelty, total: `${total}/25` },
+        quality: { self_contained, code_clarity, reusability, effectiveness, novelty, total: `${total}/25` },
         gate: passed ? "✅ PASSED (≥15)" : "❌ BELOW THRESHOLD (<15)",
-        action: passed ? "Skill accepted — enrich SKILL.md with description, customization table, and implementation pattern" : "Skill below quality gate — consider removing or improving",
+        action: passed ? "Skill accepted — enrich SKILL.md with description, customization table, and usage pattern" : "Skill below quality gate — consider removing or improving",
       });
     },
   );
+
 
   // ┌─────────────────────────────────────────────────────────┐
   // │  DATASET REGISTRY                                       │
