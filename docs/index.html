@@ -370,7 +370,7 @@
 
 <header>
   <h1>🧠 <span class="accent">PAR v7.0</span></h1>
-  <p>Persistent Agent Runtime — 56 MCP Tools · Knowledge Graph · Autonomous Maintenance</p>
+  <p>Persistent Agent Runtime — 60 MCP Tools · Knowledge Graph · Autonomous Maintenance</p>
 </header>
 
 <div class="tab-bar">
@@ -384,7 +384,7 @@
   </button>
   <button class="tab" data-view="table">
     <span class="iconify" data-icon="lucide:list" data-width="14" style="vertical-align: -2px; margin-right: 4px;"></span>
-    Tool Registry (56)
+    Tool Registry (60)
   </button>
 </div>
 
@@ -401,17 +401,17 @@
 </div>
 
 <div class="footer-note">
-  <a href="https://github.com/latentfidelity/par">GitHub</a> · <a href="https://latentfidelity.github.io/portfolio">Portfolio</a> · Built with <a href="https://d3js.org">D3.js</a> · 56 MCP tools · MIT License
+  <a href="https://github.com/latentfidelity/par">GitHub</a> · <a href="https://latentfidelity.github.io/portfolio">Portfolio</a> · Built with <a href="https://d3js.org">D3.js</a> · 60 MCP tools · MIT License
 </div>
 
 <script>
 // ═══════════════════════════════════════════════════════
-// DATA — exact from src/tools/*.ts v7.0.0 (56 tools)
+// DATA — exact from src/tools/*.ts v7.0.0 (60 tools)
 // ═══════════════════════════════════════════════════════
 
 const CATEGORIES = {
   core:       { color: '#6366f1', label: 'Core' },
-  memory:     { color: '#a855f7', label: 'Semantic Memory (11)' },
+  memory:     { color: '#a855f7', label: 'Semantic Memory (12)' },
   knowledge:  { color: '#f87171', label: 'Knowledge Graph (5)' },
   project:    { color: '#22c55e', label: 'Project Registry' },
   task:       { color: '#f59e0b', label: 'Task Queue' },
@@ -421,7 +421,7 @@ const CATEGORIES = {
   meta:       { color: '#06b6d4', label: 'Meta KV Store' },
   snippet:    { color: '#ef4444', label: 'Snippet Store' },
   file:       { color: '#14b8a6', label: 'File Store' },
-  skill:      { color: '#ec4899', label: 'Skill System (4)' },
+  skill:      { color: '#ec4899', label: 'Skill System (7)' },
   dataset:    { color: '#f97316', label: 'Dataset Registry (4)' },
   infra:      { color: '#64748b', label: 'Infrastructure' },
   service:    { color: '#60a5fa', label: 'Service' },
@@ -484,7 +484,11 @@ const TOOLS = [
   { id: 'dataset_search', cat: 'dataset',  desc: 'Search sprite index by tags (AND logic)' },
   { id: 'system_health',  cat: 'infra',    desc: 'One-shot infra audit: services, storage, memory, disk' },
   { id: 'system_changelog', cat: 'infra',  desc: 'Human-readable changelog from events, memories, workflows' },
-  { id: 'memory_audit',    cat: 'memory',  desc: 'Detect contradictions, staleness, and orphaned knowledge — dry_run by default' },
+  { id: 'system_qa',      cat: 'infra',    desc: 'Automated N-cycle subsystem probe with heap leak detection' },
+  { id: 'memory_audit',   cat: 'memory',   desc: 'Detect contradictions, staleness, and orphaned knowledge' },
+  { id: 'skill_ingest',   cat: 'skill',    desc: 'Ingest source code: auto-detect tech, classify, check duplicates' },
+  { id: 'skill_score',    cat: 'skill',    desc: 'Score skill on 5-dimension quality rubric (15/25 gate)' },
+  { id: 'skill_enrich',   cat: 'skill',    desc: 'Server-side source analysis → enriched SKILL.md (23ms/skill)' },
 ];
 
 const SERVICES = [
@@ -759,7 +763,7 @@ function buildToolTable() {
 const FLOW_NODES = [
   { id: 'agent',    label: 'Agent',           sub: 'MCP Client',        x: 0.08, y: 0.5,  color: '#6366f1', w: 120, h: 56 },
   { id: 'gateway',  label: 'MCP Gateway',     sub: 'HTTP + SSE',        x: 0.28, y: 0.5,  color: '#06b6d4', w: 130, h: 56 },
-  { id: 'router',   label: 'Tool Router',     sub: '56 tools · Zod',    x: 0.48, y: 0.5,  color: '#10b981', w: 130, h: 56 },
+  { id: 'router',   label: 'Tool Router',     sub: '60 tools · Zod',    x: 0.48, y: 0.5,  color: '#10b981', w: 130, h: 56 },
   { id: 'memory',   label: 'Memory Store',    sub: 'memory/*.json',     x: 0.72, y: 0.18, color: '#f59e0b', w: 130, h: 50 },
   { id: 'meta',     label: 'Meta KV',         sub: 'kv/*.json',         x: 0.72, y: 0.42, color: '#f59e0b', w: 120, h: 50 },
   { id: 'tasks',    label: 'Task Queue',      sub: 'tasks/*.json',      x: 0.72, y: 0.64, color: '#f59e0b', w: 120, h: 50 },
