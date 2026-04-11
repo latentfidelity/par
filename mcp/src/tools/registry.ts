@@ -693,11 +693,20 @@ export function registerRegistryTools(server: McpServer) {
         }
       }
 
-      // ── Extract CSS custom properties ──
-      const cssVarPattern = /--([a-zA-Z0-9-]+)\s*:\s*([^;]+);/g;
+      // ── Extract CSS custom properties (only from <style> blocks) ──
       const cssVars: { name: string; default_value: string }[] = [];
-      while ((m = cssVarPattern.exec(source)) !== null) {
-        if (cssVars.length < 15) cssVars.push({ name: `--${m[1]}`, default_value: m[2].trim() });
+      const styleBlocks = source.match(/<style[^>]*>([\s\S]*?)<\/style>/gi);
+      if (styleBlocks) {
+        const cssContent = styleBlocks.join("\n");
+        const cssVarPattern = /--([a-zA-Z0-9-]+)\s*:\s*([^;]{1,60});/g;
+        const seen = new Set<string>();
+        while ((m = cssVarPattern.exec(cssContent)) !== null) {
+          const varName = `--${m[1]}`;
+          if (cssVars.length < 15 && !seen.has(varName)) {
+            seen.add(varName);
+            cssVars.push({ name: varName, default_value: m[2].trim().slice(0, 40) });
+          }
+        }
       }
 
       // ── Extract key JS patterns ──
