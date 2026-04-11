@@ -378,6 +378,261 @@ export function registerRegistryTools(server: McpServer) {
   );
 
   // ┌─────────────────────────────────────────────────────────┐
+  // │  SKILL INGESTION                                        │
+  // └─────────────────────────────────────────────────────────┘
+
+  server.tool(
+    "skill_ingest",
+    "Ingest raw HTML/CSS/JS source into the skill library. Detects tech stack, computes complexity, checks for duplicates via embedding similarity, and writes a structured SKILL.md + source.md. Returns the analysis for the agent to enrich with descriptions.",
+    {
+      name: z.string().describe("Kebab-case skill name (e.g. 'liquid-metal-button')"),
+      html: z.string().optional().describe("HTML source code"),
+      css: z.string().optional().describe("CSS source code"),
+      js: z.string().optional().describe("JavaScript source code"),
+      source_url: z.string().optional().describe("Original source URL (e.g. CodePen link)"),
+      category: z.enum(["effect", "component", "template", "tool"]).optional()
+        .describe("Override auto-classification (default: auto-detect from code)"),
+      duplicate_threshold: z.number().optional()
+        .describe("Cosine similarity threshold for duplicate detection (default 0.85)"),
+    },
+    async ({ name, html, css, js, source_url, category, duplicate_threshold }) => {
+      const allSource = [html || "", css || "", js || ""].join("\n");
+      if (!allSource.trim()) return errorResult("At least one of html, css, or js is required.");
+
+      // ── Tech stack detection (regex-based, no AI needed) ──
+      const techPatterns: Array<[RegExp, string]> = [
+        [/THREE\.|three\.js|three\.module/i, "three-js"],
+        [/gl\.create|WebGLRenderingContext|getContext\(['"]webgl/i, "webgl"],
+        [/gl_FragColor|gl_Position|precision\s+(high|medium|low)p/i, "glsl"],
+        [/gsap\.|ScrollTrigger|TweenMax/i, "gsap"],
+        [/canvas\.getContext\(['"]2d['"]\)|CanvasRenderingContext2D/i, "canvas-2d"],
+        [/navigator\.gpu|GPUDevice/i, "webgpu"],
+        [/backdrop-filter/i, "backdrop-filter"],
+        [/@keyframes\s/i, "css-animation"],
+        [/<svg[\s>]|SVGElement/i, "svg"],
+        [/AudioContext|Web\s*Audio/i, "web-audio"],
+        [/CSS\.registerProperty/i, "css-houdini"],
+        [/import\s.*from\s+['"]react/i, "react"],
+        [/ShaderMaterial|RawShaderMaterial/i, "three-shader"],
+        [/paper-design\/shaders/i, "paper-shaders"],
+        [/requestAnimationFrame/i, "animation-loop"],
+      ];
+
+      const detectedTech: string[] = [];
+      for (const [pattern, tag] of techPatterns) {
+        if (pattern.test(allSource)) detectedTech.push(tag);
+      }
+      if (!js?.trim() && !allSource.match(/<script/i)) detectedTech.push("css-only");
+
+      // ── Complexity computation ──
+      const totalLines = allSource.split("\n").length;
+      const complexity = totalLines < 100 ? "light" : totalLines <= 500 ? "medium" : "heavy";
+
+      // ── Auto-classification ──
+      let finalCategory = category;
+      if (!finalCategory) {
+        if (detectedTech.some(t => ["webgl", "glsl", "three-js", "gsap", "canvas-2d", "css-animation", "three-shader"].includes(t))) {
+          finalCategory = "effect";
+        } else if (/<(form|button|input|select|nav|card|modal|tooltip)/i.test(html || "")) {
+          finalCategory = "component";
+        } else if (/<(header|main|footer|section|article)/i.test(html || "") && totalLines > 200) {
+          finalCategory = "template";
+        } else {
+          finalCategory = "effect"; // default
+        }
+      }
+
+      const skillId = `${finalCategory}-${name}`;
+
+      // ── Duplicate detection via embedding ──
+      const threshold = duplicate_threshold || 0.85;
+      const description = `${skillId}: ${detectedTech.join(", ")} ${complexity} ${totalLines} lines`;
+      let duplicateWarning: string | null = null;
+
+      try {
+        const { embed: embedFn, cosineSimilarity: cosSim } = await import("../lib/embedder.js");
+        const newVec = await embedFn(description);
+
+        // Scan existing skills in the memory store
+        const skillsDir = path.join(META_DIR, "skills");
+        const existingSkills = listJSON(skillsDir);
+        let maxSim = 0;
+        let mostSimilar = "";
+
+        for (const skill of existingSkills) {
+          if (skill.embedding) {
+            const sim = cosSim(newVec, skill.embedding);
+            if (sim > maxSim) {
+              maxSim = sim;
+              mostSimilar = skill.id;
+            }
+          } else if (skill.description) {
+            // Compute similarity on-the-fly for skills without embeddings
+            const skillVec = await embedFn(skill.description);
+            const sim = cosSim(newVec, skillVec);
+            if (sim > maxSim) {
+              maxSim = sim;
+              mostSimilar = skill.id;
+            }
+          }
+        }
+
+        if (maxSim >= threshold) {
+          duplicateWarning = `⚠️ Potential duplicate: ${mostSimilar} (similarity: ${maxSim.toFixed(3)}). Proceeding anyway — review recommended.`;
+        }
+      } catch {
+        // Embedding not available, skip duplicate check
+      }
+
+      // ── Write skill directory ──
+      // Determine library root — check for the expected location inside the engram project
+      const libRoots = [
+        path.join(META_DIR, "..", ".agents", "skills", "library"),   // /opt/engram/.agents/skills/library
+        path.join(META_DIR, "..", "agents", "skills", "library"),
+      ];
+      let libRoot = libRoots.find(p => fs.existsSync(p));
+      if (!libRoot) {
+        // Create it at the first candidate
+        libRoot = libRoots[0];
+        fs.mkdirSync(libRoot, { recursive: true });
+      }
+
+      const skillDir = path.join(libRoot, skillId);
+      const refsDir = path.join(skillDir, "references");
+      fs.mkdirSync(refsDir, { recursive: true });
+
+      // Write source.md
+      const sourceParts: string[] = [`# Source: ${name}\n<!-- Source: ${source_url || "manual"} -->\n`];
+      if (html?.trim()) sourceParts.push(`## HTML\n\`\`\`html\n${html.trim()}\n\`\`\`\n`);
+      if (css?.trim()) sourceParts.push(`## CSS\n\`\`\`css\n${css.trim()}\n\`\`\`\n`);
+      if (js?.trim()) sourceParts.push(`## JavaScript\n\`\`\`javascript\n${js.trim()}\n\`\`\`\n`);
+      fs.writeFileSync(path.join(refsDir, "source.md"), sourceParts.join("\n"));
+
+      // Write stub SKILL.md (agent will enrich this)
+      const skillMd = [
+        "---",
+        `name: ${skillId}`,
+        `description: "${skillId}. Built with ${detectedTech.join(", ") || "HTML, CSS, JS"}."`,
+        "quality:",
+        "  self_contained: 0",
+        "  code_clarity: 0",
+        "  reusability: 0",
+        "  visual_impact: 0",
+        "  novelty: 0",
+        "  total: 0/25",
+        "---",
+        "",
+        `# ${name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" ")}`,
+        "",
+        `## Technologies`,
+        detectedTech.join(", ") || "HTML, CSS, JavaScript",
+        "",
+        `## Complexity`,
+        `${complexity} (${totalLines} lines)`,
+        "",
+        "## Source Reference",
+        "See `references/source.md` for the complete original implementation.",
+        "",
+      ].join("\n");
+      fs.writeFileSync(path.join(skillDir, "SKILL.md"), skillMd);
+
+      // ── Register in MCP skill registry ──
+      const registryPath = path.join(META_DIR, "skills", `${skillId}.json`);
+      const skillEntry = {
+        id: skillId,
+        name: name.split("-").map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(" "),
+        description,
+        type: "knowledge" as const,
+        tags: [finalCategory, ...detectedTech, complexity],
+        instructions: `Stored in library at ${skillDir}. Read SKILL.md for usage.`,
+        script: null,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+      };
+      writeJSON(registryPath, skillEntry);
+
+      return textResult({
+        id: skillId,
+        category: finalCategory,
+        tech: detectedTech,
+        complexity,
+        total_lines: totalLines,
+        path: skillDir,
+        duplicate_warning: duplicateWarning,
+        status: "ingested — SKILL.md needs enrichment (run skill_score then add description/customization)",
+      });
+    },
+  );
+
+  server.tool(
+    "skill_score",
+    "Score a skill on the 5-dimension quality rubric (self_contained, code_clarity, reusability, visual_impact, novelty). Updates the quality block in SKILL.md frontmatter and the registry entry.",
+    {
+      id: z.string().describe("Skill ID (e.g. 'effect-liquid-metal-button')"),
+      self_contained: z.number().min(1).max(5).describe("1-5: Does it run standalone without npm install?"),
+      code_clarity: z.number().min(1).max(5).describe("1-5: Is the code readable and well-structured?"),
+      reusability: z.number().min(1).max(5).describe("1-5: Can it be dropped into another project easily?"),
+      visual_impact: z.number().min(1).max(5).describe("1-5: How impressive does it look?"),
+      novelty: z.number().min(1).max(5).describe("1-5: Is this a unique pattern in the library?"),
+    },
+    async ({ id, self_contained, code_clarity, reusability, visual_impact, novelty }) => {
+      const total = self_contained + code_clarity + reusability + visual_impact + novelty;
+      const passed = total >= 15;
+
+      // Update SKILL.md if it exists
+      const libRoots = [
+        path.join(META_DIR, "..", ".agents", "skills", "library"),
+        path.join(META_DIR, "..", "agents", "skills", "library"),
+      ];
+      const libRoot = libRoots.find(p => fs.existsSync(p));
+
+      if (libRoot) {
+        const skillMdPath = path.join(libRoot, id, "SKILL.md");
+        if (fs.existsSync(skillMdPath)) {
+          let content = fs.readFileSync(skillMdPath, "utf-8");
+          // Replace quality block in frontmatter
+          const qualityBlock = [
+            "quality:",
+            `  self_contained: ${self_contained}`,
+            `  code_clarity: ${code_clarity}`,
+            `  reusability: ${reusability}`,
+            `  visual_impact: ${visual_impact}`,
+            `  novelty: ${novelty}`,
+            `  total: ${total}/25`,
+          ].join("\n");
+
+          if (content.includes("quality:")) {
+            content = content.replace(
+              /quality:[\s\S]*?total:\s*\d+\/25/m,
+              qualityBlock,
+            );
+          } else {
+            // Insert before closing ---
+            content = content.replace(/^---\s*$/m, `${qualityBlock}\n---`);
+          }
+          fs.writeFileSync(skillMdPath, content);
+        }
+      }
+
+      // Update registry entry
+      const registryPath = path.join(META_DIR, "skills", `${id}.json`);
+      const existing = readJSON(registryPath);
+      if (existing) {
+        existing.quality = { self_contained, code_clarity, reusability, visual_impact, novelty, total };
+        existing.updated = new Date().toISOString();
+        writeJSON(registryPath, existing);
+      }
+
+      return textResult({
+        id,
+        quality: { self_contained, code_clarity, reusability, visual_impact, novelty, total: `${total}/25` },
+        gate: passed ? "✅ PASSED (≥15)" : "❌ BELOW THRESHOLD (<15)",
+        action: passed ? "Skill accepted — enrich SKILL.md with description, customization table, and implementation pattern" : "Skill below quality gate — consider removing or improving",
+      });
+    },
+  );
+
+  // ┌─────────────────────────────────────────────────────────┐
   // │  DATASET REGISTRY                                       │
   // └─────────────────────────────────────────────────────────┘
 
