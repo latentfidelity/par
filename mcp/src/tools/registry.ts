@@ -382,8 +382,8 @@ export function registerRegistryTools(server: McpServer) {
   // └─────────────────────────────────────────────────────────┘
 
   server.tool(
-    "skill_ingest",
-    "Ingest raw HTML/CSS/JS source into the skill library. Detects tech stack, computes complexity, checks for duplicates via embedding similarity, and writes a structured SKILL.md + source.md. Returns the analysis for the agent to enrich with descriptions.",
+    "web_skill_ingest",
+    "Ingest raw web front-end source (HTML/CSS/JS) into the skill library. Auto-detects web tech stack (Three.js, WebGL, GLSL, GSAP, etc.), computes complexity, checks for duplicates via embedding similarity, classifies into effect/component/template/tool, and writes a structured SKILL.md + source.md.",
     {
       name: z.string().describe("Kebab-case skill name (e.g. 'liquid-metal-button')"),
       html: z.string().optional().describe("HTML source code"),
@@ -559,14 +559,14 @@ export function registerRegistryTools(server: McpServer) {
         total_lines: totalLines,
         path: skillDir,
         duplicate_warning: duplicateWarning,
-        status: "ingested — SKILL.md needs enrichment (run skill_score then add description/customization)",
+        status: "ingested — SKILL.md needs enrichment (run web_skill_score then add description/customization)",
       });
     },
   );
 
   server.tool(
-    "skill_score",
-    "Score a skill on the 5-dimension quality rubric (self_contained, code_clarity, reusability, visual_impact, novelty). Updates the quality block in SKILL.md frontmatter and the registry entry.",
+    "web_skill_score",
+    "Score a web front-end skill on the 5-dimension quality rubric (self_contained, code_clarity, reusability, visual_impact, novelty). Updates the quality block in SKILL.md frontmatter and the registry entry.",
     {
       id: z.string().describe("Skill ID (e.g. 'effect-liquid-metal-button')"),
       self_contained: z.number().min(1).max(5).describe("1-5: Does it run standalone without npm install?"),
