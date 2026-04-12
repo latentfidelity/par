@@ -671,10 +671,14 @@ export function registerRegistryTools(server: McpServer) {
       dry_run: z.boolean().optional().describe("If true, return the analysis without writing SKILL.md"),
     },
     async ({ id, description: descOverride, dry_run }) => {
-      // Locate skill in library
-      const SKILLS_DIR = process.env.SKILLS_DIR || "/data/skills";
-      const skillDir = path.join(SKILLS_DIR, id);
-      if (!fs.existsSync(skillDir)) return errorResult(`Skill not found: ${id} (checked ${SKILLS_DIR})`);
+      // Locate skill in library (same probe logic as skill_ingest and skill_score)
+      const libRoots = [
+        path.join(META_DIR, "..", ".agents", "skills", "library"),
+        path.join(META_DIR, "..", "agents", "skills", "library"),
+      ];
+      const libRoot = libRoots.find(p => fs.existsSync(path.join(p, id)));
+      if (!libRoot) return errorResult(`Skill not found: ${id} (checked ${libRoots.join(", ")})`);
+      const skillDir = path.join(libRoot, id);
 
       // Read source
       const sourcePath = path.join(skillDir, "references", "source.md");
