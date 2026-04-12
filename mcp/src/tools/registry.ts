@@ -511,6 +511,7 @@ export function registerRegistryTools(server: McpServer) {
 
       // ── Write skill directory ──
       const libRoots = [
+        "/data/skills",
         path.join(META_DIR, "..", ".agents", "skills", "library"),
         path.join(META_DIR, "..", "agents", "skills", "library"),
       ];
@@ -609,6 +610,7 @@ export function registerRegistryTools(server: McpServer) {
 
       // Update SKILL.md if it exists
       const libRoots = [
+        "/data/skills",
         path.join(META_DIR, "..", ".agents", "skills", "library"),
         path.join(META_DIR, "..", "agents", "skills", "library"),
       ];
@@ -673,6 +675,7 @@ export function registerRegistryTools(server: McpServer) {
     async ({ id, description: descOverride, dry_run }) => {
       // Locate skill in library (same probe logic as skill_ingest and skill_score)
       const libRoots = [
+        "/data/skills",
         path.join(META_DIR, "..", ".agents", "skills", "library"),
         path.join(META_DIR, "..", "agents", "skills", "library"),
       ];
