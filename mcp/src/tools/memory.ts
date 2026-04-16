@@ -8,7 +8,8 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, safeId, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
+import { embed, cosineSimilarity, EMBEDDING_DIM, getEmbeddingStatus, isSemanticReady } from "../lib/embedder.js";
+import { retrieveMemories } from "../lib/retrieval.js";
 import { type MemoryEntry, loadMemoryIndex as _loadIndex } from "./context.js";
 import { runEpistemicAudit, detectConflict } from "../lib/epistemic.js";
 
@@ -41,6 +42,7 @@ export function registerMemoryTools(
     async ({ content, type, project, tags, refs }) => {
       const id = randomUUID();
       const embedding = await embed(content);
+      const embeddingStatus = getEmbeddingStatus();
       const memory = {
         id,
         type,
@@ -49,6 +51,8 @@ export function registerMemoryTools(
         tags: tags ? tags.split(",").map((t) => t.trim()) : [],
         refs: refs ? refs.split(",").map((r) => r.trim()) : [],
         embedding,
+        embedding_model: embeddingStatus.model,
+        embedding_updated: new Date().toISOString(),
         created: new Date().toISOString(),
       };
 
@@ -64,6 +68,9 @@ export function registerMemoryTools(
           tags: memory.tags,
           created: memory.created,
           embedding: memory.embedding,
+          archived: false,
+          pinned: false,
+          refs: memory.refs,
         });
       }
 
@@ -76,7 +83,7 @@ export function registerMemoryTools(
         const idx = getMemoryIndex();
         if (idx && idx.length > 1) {
           const candidates = idx
-            .filter(m => m.id !== id && (!project || m.project === project))
+            .filter(m => m.id !== id && !m.archived && (!project || m.project === project))
             .map(m => ({ ...m, sim: cosineSimilarity(embedding, m.embedding) }))
             .filter(m => m.sim >= 0.55 && m.sim <= 0.90)
             .sort((a, b) => b.sim - a.sim)
@@ -114,42 +121,50 @@ export function registerMemoryTools(
         .enum(["decision", "insight", "task", "handoff", "observation"])
         .optional()
         .describe("Filter by memory type"),
+      strategy: z.enum(["semantic", "lexical", "hybrid"]).optional().describe("Retrieval strategy (default hybrid)"),
+      include_archived: z.boolean().optional().describe("Include archived memories (default false)"),
+      min_score: z.number().optional().describe("Minimum retrieval score threshold (0-1)"),
+      diagnostics: z.boolean().optional().describe("Include score components for each result"),
       limit: z.number().optional().describe("Max results (default 10)"),
     },
-    async ({ query, project, type, limit }) => {
+    async ({ query, project, type, strategy, include_archived, min_score, diagnostics, limit }) => {
       if (!getMemoryIndex()) await loadMemoryIndex();
       if (getMemoryIndex()!.length === 0) return textResult("No memories stored yet.");
 
-      const queryVec = await embed(query);
-      const maxResults = Math.min(limit || 10, 50);
-
-      let candidates = getMemoryIndex()!;
-      if (project) candidates = candidates.filter((m) => m.project === project);
-      if (type) candidates = candidates.filter((m) => m.type === type);
-
-      const scored = candidates
-        .map((m) => ({
-          ...m,
-          score: cosineSimilarity(queryVec, m.embedding),
-        }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, maxResults);
-
-      const results = scored.map((m) => ({
-        id: m.id,
-        score: Math.round(m.score * 1000) / 1000,
-        type: m.type,
-        project: m.project,
-        content: m.content,
-        tags: m.tags,
-        created: m.created,
-      }));
+      const results = await retrieveMemories({
+        query,
+        memories: getMemoryIndex()!,
+        project,
+        type,
+        strategy: strategy || "hybrid",
+        includeArchived: include_archived,
+        minScore: min_score,
+        limit: Math.min(limit || 10, 50),
+        diverse: true,
+      });
 
       return textResult({
         query,
-        mode: isSemanticReady() ? "semantic" : "keyword",
+        mode: getEmbeddingStatus().ready ? (strategy || "hybrid") : "lexical",
+        semantic_ready: isSemanticReady(),
         count: results.length,
-        results,
+        results: results.map((m) => ({
+          id: m.memory.id,
+          score: m.score,
+          type: m.memory.type,
+          project: m.memory.project,
+          content: m.memory.content,
+          tags: m.memory.tags,
+          created: m.memory.created,
+          ...(diagnostics ? { retrieval: m.components } : {}),
+        })),
+        ...(diagnostics ? {
+          diagnostics: {
+            strategy: strategy || "hybrid",
+            diverse_ranking: true,
+            include_archived: !!include_archived,
+          },
+        } : {}),
       });
     },
   );
@@ -163,12 +178,14 @@ export function registerMemoryTools(
         .enum(["decision", "insight", "task", "handoff", "observation"])
         .optional()
         .describe("Filter by memory type"),
+      include_archived: z.boolean().optional().describe("Include archived memories (default false)"),
       limit: z.number().optional().describe("Max results (default 20)"),
     },
-    async ({ project, type, limit }) => {
+    async ({ project, type, include_archived, limit }) => {
       const memDir = path.join(META_DIR, "memory");
       let entries = listJSON(memDir);
 
+      if (!include_archived) entries = entries.filter((m) => !m.archived);
       if (project) entries = entries.filter((m) => m.project === project);
       if (type) entries = entries.filter((m) => m.type === type);
 
@@ -277,6 +294,7 @@ export function registerMemoryTools(
       const active = all.filter(m => !m.archived);
       const archived = all.filter(m => m.archived);
       const consolidated = all.filter(m => m.consolidated_from);
+      const pinned = active.filter(m => m.pinned);
 
       // By type
       const byType: Record<string, number> = {};
@@ -299,6 +317,16 @@ export function registerMemoryTools(
 
       // Embedding coverage
       const withEmbedding = active.filter(m => m.embedding).length;
+      const tagged = active.filter(m => (m.tags || []).length > 0).length;
+      const embeddingModels: Record<string, number> = {};
+      for (const m of active.filter((entry) => entry.embedding)) {
+        const label = m.embedding_model || "unknown";
+        embeddingModels[label] = (embeddingModels[label] || 0) + 1;
+      }
+      const index = getMemoryIndex() || [];
+      const indexedActive = index.filter((m) => !m.archived).length;
+      const indexedArchived = index.filter((m) => m.archived).length;
+      const embeddingStatus = getEmbeddingStatus();
 
       // KG stats
       const kgDir = path.join(META_DIR, "knowledge");
@@ -314,12 +342,89 @@ export function registerMemoryTools(
         active: active.length,
         archived: archived.length,
         consolidated: consolidated.length,
+        pinned: pinned.length,
         by_type: byType,
         by_project: byProject,
         age_distribution: ageGroups,
         embedding_coverage: `${withEmbedding}/${active.length} (${active.length > 0 ? Math.round(withEmbedding / active.length * 100) : 0}%)`,
+        tag_coverage: `${tagged}/${active.length} (${active.length > 0 ? Math.round(tagged / active.length * 100) : 0}%)`,
+        archived_ratio: all.length > 0 ? Math.round((archived.length / all.length) * 1000) / 1000 : 0,
+        embedding_models: embeddingModels,
         knowledge_graph: { entities: kgEntities, relationships: kgRelationships },
-        vector_index: getMemoryIndex() ? `loaded (${getMemoryIndex()!.length} entries)` : "not loaded",
+        retrieval: {
+          default_strategy: "hybrid",
+          semantic_ready: embeddingStatus.ready,
+          embedding_model: embeddingStatus.model,
+          embedding_cache_entries: embeddingStatus.cache_entries,
+        },
+        vector_index: getMemoryIndex()
+          ? `loaded (${index.length} entries: ${indexedActive} active, ${indexedArchived} archived)`
+          : "not loaded",
+      });
+    },
+  );
+
+  server.tool(
+    "memory_backfill_embeddings",
+    "Backfill or refresh memory embeddings. Use this after imports, model changes, or when embedding coverage drops below target.",
+    {
+      project: z.string().optional().describe("Filter to a specific project"),
+      type: z.enum(["decision", "insight", "task", "handoff", "observation"]).optional().describe("Filter by type"),
+      include_archived: z.boolean().optional().describe("Include archived memories (default false)"),
+      force: z.boolean().optional().describe("Recompute embeddings even when one already exists"),
+      dry_run: z.boolean().optional().describe("Preview the candidate set without rewriting memories (default true)"),
+      limit: z.number().optional().describe("Maximum memories to process (default 100)"),
+    },
+    async ({ project, type, include_archived, force, dry_run, limit }) => {
+      const memDir = path.join(META_DIR, "memory");
+      const maxResults = Math.min(limit || 100, 1000);
+      const isDryRun = dry_run !== false;
+
+      let targets = listJSON(memDir);
+      if (!include_archived) targets = targets.filter((m) => !m.archived);
+      if (project) targets = targets.filter((m) => m.project === project);
+      if (type) targets = targets.filter((m) => m.type === type);
+
+      targets = targets
+        .filter((m) => force || !Array.isArray(m.embedding) || m.embedding.length !== EMBEDDING_DIM || !m.embedding_model)
+        .sort((a, b) => new Date(a.created).getTime() - new Date(b.created).getTime());
+
+      const selected = targets.slice(0, maxResults);
+      if (isDryRun) {
+        return textResult({
+          mode: "dry_run",
+          candidates: targets.length,
+          selected: selected.length,
+          force: !!force,
+          preview: selected.slice(0, 10).map((m) => ({
+            id: m.id,
+            type: m.type,
+            project: m.project,
+            has_embedding: Array.isArray(m.embedding) && m.embedding.length > 0,
+            embedding_dim: Array.isArray(m.embedding) ? m.embedding.length : 0,
+            embedding_model: m.embedding_model || null,
+            created: m.created,
+          })),
+        });
+      }
+
+      let updated = 0;
+      for (const memory of selected) {
+        memory.embedding = await embed(memory.content);
+        memory.embedding_model = getEmbeddingStatus().model;
+        memory.embedding_updated = new Date().toISOString();
+        writeJSON(path.join(memDir, `${memory.id}.json`), memory);
+        updated++;
+      }
+
+      if (updated > 0) setMemoryIndex(null);
+
+      return textResult({
+        mode: "executed",
+        updated,
+        remaining_candidates: Math.max(0, targets.length - selected.length),
+        embedding_model: getEmbeddingStatus().model,
+        dimensions: EMBEDDING_DIM,
       });
     },
   );
@@ -494,13 +599,22 @@ export function registerMemoryTools(
       if (type) memories = memories.filter(m => m.type === type);
 
       // Optional semantic filter
-      if (query && isSemanticReady()) {
-        const queryVec = await embed(query);
-        memories = memories
-          .filter(m => m.embedding)
-          .map(m => ({ ...m, relevance: cosineSimilarity(queryVec, m.embedding) }))
-          .filter(m => m.relevance > 0.25)
-          .sort((a, b) => b.relevance - a.relevance);
+      if (query) {
+        const retrieved = await retrieveMemories({
+          query,
+          memories,
+          project,
+          type,
+          strategy: "hybrid",
+          minScore: 0.15,
+          limit: maxResults,
+          diverse: true,
+        });
+        memories = retrieved.map((result) => ({
+          ...result.memory,
+          relevance: result.score,
+          retrieval: result.components,
+        }));
       }
 
       memories.sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());

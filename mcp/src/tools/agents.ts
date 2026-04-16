@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, DIRS, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
+import { embed, cosineSimilarity, getEmbeddingStatus, isSemanticReady } from "../lib/embedder.js";
 import type { MemoryEntry } from "./context.js";
 
 export function registerAgentTools(
@@ -137,6 +137,7 @@ export function registerAgentTools(
     "One-shot infrastructure health check. Returns status of all services, memory stats, disk usage, and container health. Use this instead of manually curling endpoints.",
     {},
     async () => {
+      const embeddingStatus = getEmbeddingStatus();
       const health: Record<string, any> = {
         timestamp: new Date().toISOString(),
         services: {} as Record<string, any>,
@@ -149,7 +150,9 @@ export function registerAgentTools(
         status: "healthy",
         version: "7.0.0",
         uptime: process.uptime(),
-        embedding_model: isSemanticReady() ? "all-MiniLM-L6-v2 (semantic)" : "fallback (keyword)",
+        embedding_model: embeddingStatus.ready ? `${embeddingStatus.model} (semantic)` : "fallback (keyword)",
+        retrieval_strategy: "hybrid",
+        embedding_cache_entries: embeddingStatus.cache_entries,
       };
 
       // Count stored entities
@@ -170,7 +173,15 @@ export function registerAgentTools(
         byType[m.type] = (byType[m.type] || 0) + 1;
         if (m.project) byProject[m.project] = (byProject[m.project] || 0) + 1;
       }
-      health.memory = { total: memories.length, by_type: byType, by_project: byProject };
+      const activeMemories = memories.filter((m) => !m.archived);
+      const embeddedActive = activeMemories.filter((m) => Array.isArray(m.embedding) && m.embedding.length > 0);
+      health.memory = {
+        total: memories.length,
+        active: activeMemories.length,
+        by_type: byType,
+        by_project: byProject,
+        embedding_coverage: `${embeddedActive.length}/${activeMemories.length || 0}`,
+      };
 
       // Disk usage
       try {

@@ -8,6 +8,8 @@ export interface Memory {
   tags?: string[];
   refs?: string[];
   embedding?: number[];
+  embedding_model?: string;
+  embedding_updated?: string;
   pinned?: boolean;
   pinned_reason?: string;
   archived?: boolean;

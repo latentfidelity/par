@@ -8,7 +8,8 @@ import { randomUUID } from "node:crypto";
 import { execSync } from "node:child_process";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, readJSON, writeJSON, listJSON, textResult, errorResult } from "../lib/storage.js";
-import { embed, cosineSimilarity } from "../lib/embedder.js";
+import { embed, getEmbeddingStatus } from "../lib/embedder.js";
+import { retrieveMemories } from "../lib/retrieval.js";
 import { type MemoryEntry, loadMemoryIndex as _loadIndex } from "./context.js";
 
 export function registerSystemTools(
@@ -94,7 +95,7 @@ export function registerSystemTools(
       try {
         const memDir = path.join(META_DIR, "memory");
         const allMems = listJSON(memDir)
-          .filter((m) => m.project === project)
+          .filter((m) => m.project === project && !m.archived)
           .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
           .slice(0, 5);
         result.memories = allMems.map((m) => ({
@@ -138,21 +139,28 @@ export function registerSystemTools(
       if (query) {
         try {
           if (!getMemoryIndex()) await _loadIndex(getMemoryIndex, setMemoryIndex);
-          const queryVec = await embed(query);
-          const relevantMems = getMemoryIndex()!
-            .filter((m) => m.project === project)
-            .map((m) => ({ ...m, score: cosineSimilarity(queryVec, m.embedding) }))
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 5)
-            .filter((m) => m.score > 0.3);
+          const relevantMems = await retrieveMemories({
+            query,
+            memories: getMemoryIndex()!,
+            project,
+            limit: 5,
+            strategy: "hybrid",
+            minScore: 0.18,
+            diverse: true,
+          });
 
           result.relevant_memories = relevantMems.map((m) => ({
-            id: m.id,
-            score: Math.round(m.score * 1000) / 1000,
-            type: m.type,
-            content: m.content,
-            tags: m.tags,
+            id: m.memory.id,
+            score: m.score,
+            type: m.memory.type,
+            content: m.memory.content,
+            tags: m.memory.tags,
+            retrieval: m.components,
           }));
+          result.retrieval = {
+            strategy: "hybrid",
+            semantic_ready: getEmbeddingStatus().ready,
+          };
         } catch {
           result.relevant_memories = [];
         }
@@ -170,17 +178,36 @@ export function registerSystemTools(
       // Cross-project patterns (recent memories from related projects)
       try {
         const memDir2 = path.join(META_DIR, "memory");
-        const crossMems = listJSON(memDir2)
-          .filter((m) => m.project && m.project !== project)
-          .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
-          .slice(0, 3);
-        result.cross_project = crossMems.map((m) => ({
-          id: m.id,
-          project: m.project,
-          type: m.type,
-          content: m.content.slice(0, 200),
-          created: m.created,
-        }));
+        const otherProjectMemories = listJSON(memDir2).filter((m) => m.project && m.project !== project && !m.archived);
+        if (query && getMemoryIndex()) {
+          const crossMems = await retrieveMemories({
+            query,
+            memories: getMemoryIndex()!.filter((m) => m.project && m.project !== project),
+            limit: 3,
+            strategy: "hybrid",
+            minScore: 0.16,
+            diverse: true,
+          });
+          result.cross_project = crossMems.map((m) => ({
+            id: m.memory.id,
+            project: m.memory.project,
+            type: m.memory.type,
+            content: m.memory.content.slice(0, 200),
+            created: m.memory.created,
+            score: m.score,
+          }));
+        } else {
+          const crossMems = otherProjectMemories
+            .sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime())
+            .slice(0, 3);
+          result.cross_project = crossMems.map((m) => ({
+            id: m.id,
+            project: m.project,
+            type: m.type,
+            content: m.content.slice(0, 200),
+            created: m.created,
+          }));
+        }
       } catch {
         result.cross_project = [];
       }
@@ -397,6 +424,7 @@ export function registerSystemTools(
       // Also store as a memory for semantic retrieval
       const content = `FILE INDEX for ${project}: ${index.total_files} files across ${dirs.size} directories at ${root_path}. Key files: ${key_files.join(", ")}. Languages: ${Object.entries(langCount).map(([k,v]) => `${k}(${v})`).join(", ")}.`;
       await embed(content); // pre-warm
+      const embeddingStatus = getEmbeddingStatus();
       const memId = randomUUID();
       writeJSON(path.join(META_DIR, "memory", `${memId}.json`), {
         id: memId,
@@ -406,6 +434,8 @@ export function registerSystemTools(
         tags: ["file-index", "structure"],
         refs: [],
         embedding: await embed(content),
+        embedding_model: embeddingStatus.model,
+        embedding_updated: new Date().toISOString(),
         created: new Date().toISOString(),
       });
 

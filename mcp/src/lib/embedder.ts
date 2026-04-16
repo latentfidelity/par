@@ -11,6 +11,32 @@ let initPromise: Promise<void> | null = null;
 
 const MODEL_NAME = "Xenova/all-MiniLM-L6-v2";
 const EMBEDDING_DIM = 384;
+const EMBED_CACHE_MAX = Math.max(32, parseInt(process.env.EMBED_CACHE_MAX || "256", 10));
+const embedCache = new Map<string, number[]>();
+
+function normalizeCacheKey(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function getCachedEmbedding(text: string): number[] | null {
+  const key = normalizeCacheKey(text);
+  const cached = embedCache.get(key);
+  if (!cached) return null;
+  embedCache.delete(key);
+  embedCache.set(key, cached);
+  return [...cached];
+}
+
+function setCachedEmbedding(text: string, vector: number[]): number[] {
+  const key = normalizeCacheKey(text);
+  if (embedCache.has(key)) embedCache.delete(key);
+  embedCache.set(key, [...vector]);
+  if (embedCache.size > EMBED_CACHE_MAX) {
+    const oldest = embedCache.keys().next().value;
+    if (oldest) embedCache.delete(oldest);
+  }
+  return [...vector];
+}
 
 /**
  * Initialize the embedding pipeline (lazy, called once on first use).
@@ -45,6 +71,9 @@ async function init(): Promise<void> {
  * Falls back to a simple hash-based vector if model isn't available.
  */
 async function embed(text: string): Promise<number[]> {
+  const cached = getCachedEmbedding(text);
+  if (cached) return cached;
+
   await init();
 
   if (modelReady && pipeline) {
@@ -52,11 +81,11 @@ async function embed(text: string): Promise<number[]> {
       pooling: "mean",
       normalize: true,
     });
-    return Array.from(output.data) as number[];
+    return setCachedEmbedding(text, Array.from(output.data) as number[]);
   }
 
   // Fallback: deterministic hash-based pseudo-embedding
-  return hashEmbed(text);
+  return setCachedEmbedding(text, hashEmbed(text));
 }
 
 /**
@@ -116,4 +145,14 @@ function isSemanticReady(): boolean {
   return modelReady;
 }
 
-export { embed, cosineSimilarity, isSemanticReady, EMBEDDING_DIM };
+function getEmbeddingStatus() {
+  return {
+    ready: modelReady,
+    model: modelReady ? MODEL_NAME : "fallback",
+    dimensions: EMBEDDING_DIM,
+    cache_entries: embedCache.size,
+    cache_capacity: EMBED_CACHE_MAX,
+  };
+}
+
+export { embed, cosineSimilarity, isSemanticReady, getEmbeddingStatus, EMBEDDING_DIM };

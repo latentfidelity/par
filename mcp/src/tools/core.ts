@@ -7,7 +7,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { META_DIR, readJSON, writeJSON, listJSON, safePath, textResult, errorResult } from "../lib/storage.js";
-import { embed, cosineSimilarity, isSemanticReady } from "../lib/embedder.js";
+import { embed, cosineSimilarity, getEmbeddingStatus, isSemanticReady } from "../lib/embedder.js";
 
 export function registerCoreTools(server: McpServer) {
   // ┌─────────────────────────────────────────────────────────┐
@@ -15,6 +15,7 @@ export function registerCoreTools(server: McpServer) {
   // └─────────────────────────────────────────────────────────┘
 
   server.tool("server_status", "Get PAR system status and capabilities", {}, async () => {
+    const embeddingStatus = getEmbeddingStatus();
     const projectCount = listJSON(path.join(META_DIR, "projects")).length;
     const taskCount = listJSON(path.join(META_DIR, "tasks")).length;
     const skillCount = listJSON(path.join(META_DIR, "skills")).length;
@@ -32,6 +33,13 @@ export function registerCoreTools(server: McpServer) {
       version: "7.0.0",
       uptime: process.uptime(),
       memory: process.memoryUsage(),
+      retrieval: {
+        default_strategy: "hybrid",
+        semantic_ready: embeddingStatus.ready,
+        embedding_model: embeddingStatus.model,
+        embedding_dimensions: embeddingStatus.dimensions,
+        embedding_cache_entries: embeddingStatus.cache_entries,
+      },
       counts: {
         projects: projectCount, tasks: taskCount, skills: skillCount,
         snippets: snippetCount, datasets: datasetCount, artifacts: artifactCount,
@@ -314,7 +322,7 @@ export function registerCoreTools(server: McpServer) {
         wall_time_ms: Date.now() - t0,
         heap_drift_kb: heapDrift,
         heap_leak_warning: heapDrift > 5000, // warn if >5MB growth
-        embedding_model: isSemanticReady() ? "all-MiniLM-L6-v2" : "fallback",
+        embedding_model: getEmbeddingStatus().model,
         cycles: results,
       });
     },

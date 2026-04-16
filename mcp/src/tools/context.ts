@@ -27,6 +27,9 @@ export interface MemoryEntry {
   tags: string[];
   created: string;
   embedding: number[];
+  archived?: boolean;
+  pinned?: boolean;
+  refs?: string[];
 }
 
 /**
@@ -48,6 +51,9 @@ export async function loadMemoryIndex(
     tags: m.tags || [],
     created: m.created,
     embedding: m.embedding,
+    archived: !!m.archived,
+    pinned: !!m.pinned,
+    refs: m.refs || [],
   }));
   console.log(`[memory] Index loaded: ${loaded.length} entries (${isSemanticReady() ? "semantic" : "keyword"} mode)`);
   setIndex(loaded);
