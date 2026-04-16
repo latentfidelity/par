@@ -132,7 +132,7 @@ function selectDiverse(results: RetrievalResult[], limit: number): RetrievalResu
     chosen.push(remaining.splice(bestIndex, 1)[0]);
   }
 
-  return chosen;
+  return chosen.sort((left, right) => right.score - left.score);
 }
 
 export async function retrieveMemories({
